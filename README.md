@@ -1,0 +1,285 @@
+# Auto Apply (modo assistido)
+
+Aplicação Python que lê seu currículo, busca vagas em **várias plataformas** (LinkedIn, Gupy, InfoJobs, Remotive, RemoteOK), ranqueia por compatibilidade com matching semântico **gratuito/local** e prepara candidaturas — **você confirma o envio manualmente**.
+
+## Plataformas suportadas
+
+| Fonte | Como funciona | Login | Candidatura |
+|-------|---------------|-------|-------------|
+| `linkedin` | Navegador (Playwright) | Manual (1ª vez) | Easy Apply assistido |
+| `gupy` | API pública | Não | Link manual |
+| `infojobs` | Navegador (Playwright) | Não | Link manual |
+| `remotive` | API pública (só remoto) | Não | Link manual |
+| `remoteok` | API pública (só remoto) | Não | Link manual |
+
+As APIs públicas (Gupy, Remotive, RemoteOK) são as mais estáveis e sem risco de bloqueio.
+
+## Aviso legal
+
+O LinkedIn proíbe automação e scraping nos [Termos de Uso](https://www.linkedin.com/legal/user-agreement). Este projeto opera em **modo assistido**:
+
+- Navegador visível (não headless por padrão)
+- Login manual na primeira vez (sessão salva em `browser_data/`)
+- Pré-preenchimento de campos quando possível
+- **O clique final em "Enviar candidatura" é sempre seu**
+- Delays humanos e limite diário configurável
+
+Use por sua conta e risco. Não há garantia contra bloqueio de conta.
+
+## Requisitos
+
+- Python 3.10+
+- Conta LinkedIn
+- Currículo em PDF ou DOCX
+
+## Instalação
+
+```bash
+# Clone ou entre na pasta do projeto
+cd eric
+
+# Ambiente virtual (recomendado)
+python -m venv .venv
+# Windows
+.venv\Scripts\activate
+# Linux/macOS
+source .venv/bin/activate
+
+pip install -r requirements.txt
+playwright install chromium
+```
+
+## Configuração
+
+Copie o arquivo de exemplo e ajuste:
+
+```bash
+cp .env.example .env
+```
+
+Principais variáveis:
+
+| Variável | Descrição | Padrão |
+|----------|-----------|--------|
+| `RESUME_PATH` | Caminho do currículo | `meu_cv.pdf` |
+| `SEARCH_KEYWORDS` | Palavras-chave da busca | `desenvolvedor python` |
+| `SEARCH_LOCATION` | Localização | `Brasil` |
+| `SEARCH_SOURCES` | Fontes (vírgula): `linkedin,gupy,infojobs,remotive,remoteok` | `linkedin` |
+| `SEARCH_WORKPLACE` | `remoto`, `hibrido`, `presencial` (vírgula) | vazio (qualquer) |
+| `SEARCH_JOB_TYPE` | `efetivo`, `estagio`, `meio_periodo`, `temporario`, `pj` | vazio |
+| `SEARCH_EXPERIENCE` | `estagio`, `junior`, `pleno`, `senior`, `diretor`, `executivo` | vazio |
+| `SEARCH_DATE_POSTED` | `24h`, `semana`, `mes`, `qualquer` | `qualquer` |
+| `MIN_MATCH_SCORE` | Score mínimo (0-100) | `60` |
+| `DAILY_APPLY_LIMIT` | Limite diário de vagas | `10` |
+| `USE_SEMANTIC_MATCHING` | Usar sentence-transformers | `true` |
+| `LLM_PROVIDER` | `none`, `ollama` ou `groq` | `none` |
+
+### Filtros e fontes
+
+Os filtros valem para todas as fontes (quando a plataforma suporta). Exemplos:
+
+```bash
+# Buscar só na Gupy e InfoJobs, vagas de estágio
+SEARCH_SOURCES=gupy,infojobs
+SEARCH_JOB_TYPE=estagio
+
+# Remoto e híbrido, publicadas na última semana
+SEARCH_WORKPLACE=remoto,hibrido
+SEARCH_DATE_POSTED=semana
+```
+
+Também dá pra escolher as fontes direto no comando:
+
+```bash
+python -m cv_apply search --sources gupy,remotive --limit 10
+```
+
+Coloque seu currículo na raiz do projeto (ex.: `meu_cv.pdf`) ou informe o caminho em `RESUME_PATH`.
+
+## Uso
+
+### Interface web (mais fácil, reutilizável)
+
+```bash
+python -m cv_apply web
+```
+
+Abre no navegador uma interface (VagaMatch) que **qualquer pessoa** pode usar — cada um tem sua sessão isolada, sem precisar de conta:
+
+1. **Sobe o currículo** (PDF/DOCX) na tela inicial
+2. Recebe na hora o **perfil extraído** e a **nota ATS de formato** (anel de score)
+3. Preenche setor/cargo, localização e filtra por modelo de trabalho, tipo, nível e data
+4. Escolhe as fontes (Gupy, Remotive, RemoteOK por padrão; InfoJobs/LinkedIn abrem navegador)
+5. Vê as vagas **ordenadas por compatibilidade**, cada uma com **% ATS** e skills em comum
+6. Em cada vaga: **Aplicar**, **Análise ATS** (cobertura + palavras faltando), **Adaptar currículo**, **Carta** e **Já apliquei** (acompanhamento)
+
+Não precisa configurar nada antes — o currículo é enviado pela própria interface.
+
+> Os dados de cada pessoa ficam só na sessão dela (em memória) e o arquivo enviado vai para `data/uploads/`.
+
+### Linha de comando
+
+### 1. Extrair perfil do currículo
+
+```bash
+python -m cv_apply parse meu_cv.pdf
+```
+
+Mostra nome, skills, senioridade e salva em `data/profile.json`.
+
+### 2. Buscar vagas
+
+```bash
+python -m cv_apply search
+```
+
+Busca nas fontes definidas em `SEARCH_SOURCES` e salva em `data/cv_apply.db`. Se `linkedin` estiver na lista, abre o Chromium e pede login na primeira vez. As demais fontes (Gupy, Remotive, RemoteOK) usam API e não precisam de login.
+
+```bash
+# Só APIs (rápido, sem navegador)
+python -m cv_apply search --sources gupy,remotive,remoteok --limit 15
+```
+
+### 3. Ranquear por compatibilidade
+
+```bash
+python -m cv_apply rank
+```
+
+Calcula score 0-100 usando:
+
+- Similaridade semântica local (`all-MiniLM-L6-v2`) ou TF-IDF como fallback
+- Overlap de skills
+- Compatibilidade de senioridade e localização
+
+Exporta `data/rankings.json`.
+
+### 3a. Análise ATS do currículo
+
+```bash
+python -m cv_apply ats --limit 5
+```
+
+Analisa seu currículo contra as vagas top e mostra:
+
+- **Checagem de formato ATS**: email/telefone, seções essenciais (experiência, formação, habilidades), tamanho, texto extraível (detecta currículo em imagem) e excesso de imagens
+- **Score ATS por vaga**: cobertura de palavras-chave da vaga (0-100)
+- **Palavras-chave faltando** em cada vaga e um agregado do que mais falta no geral
+
+Tudo local, sem LLM. Use pra saber o que ajustar no seu currículo.
+
+### 3b. Currículo adaptado + carta por vaga
+
+```bash
+python -m cv_apply tailor --limit 3
+```
+
+Gera em `data/tailored/` para cada vaga top:
+
+- `*.md` — currículo adaptado (rascunho): resumo direcionado, skills relevantes priorizadas, checklist de palavras-chave a incluir e sugestões ATS
+- `*_carta.txt` — carta de apresentação personalizada com as skills que batem com a vaga
+
+> São **rascunhos** baseados em palavras-chave para você revisar — não reescrevem seu PDF automaticamente. Com LLM grátis ligado (Ollama/Groq), a carta fica ainda mais sob medida.
+
+#### Vagas internacionais e currículos em inglês
+
+- Currículos em inglês são lidos normalmente (skills, senioridade, anos de experiência, resumo).
+- Fontes internacionais: **Remotive** e **RemoteOK** (remoto global) e **LinkedIn** com a localização ajustada (ex.: "Portugal", "United States", "Remote").
+- A **carta de apresentação** se adapta ao idioma: por padrão (`COVER_LETTER_LANG=auto`) detecta o idioma da vaga e escreve em inglês para vagas em inglês. Dá para forçar com `COVER_LETTER_LANG=pt` ou `en`, e na interface web há botões **Auto / Português / English** no modal da carta.
+
+### 4. Preparar candidaturas (modo assistido)
+
+```bash
+python -m cv_apply apply
+```
+
+Vagas do **LinkedIn** com Easy Apply (modo assistido):
+
+1. Abre a vaga no LinkedIn
+2. Clica em Easy Apply
+3. Pré-preenche textareas e anexa currículo quando possível
+4. **Para antes de enviar** — você revisa e clica Enviar
+5. Pressiona ENTER no terminal para seguir para a próxima
+
+Vagas de **outras plataformas** (Gupy, InfoJobs, Remotive, RemoteOK) não têm Easy Apply. Use `--no-easy-only` para listá-las como candidatura manual (mostra o link, com opção de abrir no navegador):
+
+```bash
+# LinkedIn assistido + links das outras plataformas
+python -m cv_apply apply --no-easy-only --open-browser
+
+# Só as melhores, com carta sugerida
+python -m cv_apply apply --min-score 70 --limit 5 --show-letter
+```
+
+## LLM gratuito (opcional)
+
+Por padrão, a carta de apresentação usa template Jinja2 (sem custo).
+
+### Ollama (local, grátis)
+
+1. Instale [Ollama](https://ollama.com/)
+2. `ollama pull llama3.2`
+3. No `.env`: `LLM_PROVIDER=ollama`
+
+### Groq (API free tier)
+
+1. Crie conta em [console.groq.com](https://console.groq.com/)
+2. No `.env`:
+   ```
+   LLM_PROVIDER=groq
+   GROQ_API_KEY=sua_chave
+   ```
+
+## Estrutura do projeto
+
+```
+eric/
+├── cv_apply/
+│   ├── cli.py              # Comandos parse/search/rank/ats/tailor/apply/web
+│   ├── webapp.py           # Interface web (Flask)
+│   ├── config.py           # Configurações (.env)
+│   ├── profile.py          # Modelos CandidateProfile, JobPosting
+│   ├── resume_parser.py    # Leitura PDF/DOCX
+│   ├── matching.py         # Matching semântico + keywords
+│   ├── filters.py          # Filtros (workplace, tipo, nível, data)
+│   ├── sources.py          # Fontes: LinkedIn, Gupy, InfoJobs, Remotive, RemoteOK
+│   ├── linkedin.py         # Playwright (busca + Easy Apply)
+│   ├── ats.py              # Análise ATS (cobertura + formato)
+│   ├── tailor.py           # Currículo adaptado por vaga
+│   ├── cover_letter.py     # Carta por template ou LLM
+│   ├── storage.py          # SQLite + JSON
+│   └── skills_dict.py      # Dicionário de skills
+├── data/                   # Perfil, vagas, rankings, tailored/ (gerado)
+├── browser_data/           # Sessão do navegador (gerado)
+├── requirements.txt
+├── .env.example
+└── README.md
+```
+
+## Fluxo
+
+```
+Currículo → parse → perfil
+                    ↓
+              search (várias fontes) → vagas
+                    ↓
+              rank → top N compatíveis
+                    ↓
+        ats / tailor → análise ATS + currículo e carta adaptados
+                    ↓
+              apply (assistido) → você envia
+```
+
+## Solução de problemas
+
+**Nenhuma vaga encontrada:** O LinkedIn muda seletores com frequência. Ajuste em `cv_apply/linkedin.py`.
+
+**Modelo semântico lento na primeira vez:** O `sentence-transformers` baixa ~90MB na primeira execução. Use `USE_SEMANTIC_MATCHING=false` para só TF-IDF.
+
+**Login não detectado:** Faça login manualmente na janela do Chromium e aguarde. A sessão fica em `browser_data/`.
+
+**Bloqueio / captcha:** Reduza `DAILY_APPLY_LIMIT`, aumente pausas entre sessões e evite uso excessivo.
+
+## Licença
+
+Uso educacional/pessoal. Respeite os Termos de Uso do LinkedIn e das plataformas de emprego.

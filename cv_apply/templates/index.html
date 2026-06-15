@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VagaMatch — encontre vagas que combinam com você</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<header>
+  <div class="logo">V</div>
+  <div>
+    <h1>VagaMatch</h1>
+  </div>
+  <span class="sub">— suba seu currículo, veja sua nota ATS e encontre vagas que combinam</span>
+  <span class="spacer"></span>
+  <button id="resetBtn" class="btn small ghost hidden" onclick="resetProfile()">Trocar currículo</button>
+</header>
+
+<div class="container">
+  <!-- ETAPA 1: UPLOAD -->
+  <div id="uploadView" class="upload-box">
+    <p class="lead">Encontre a vaga certa pra você</p>
+    <p class="lead-sub">Enviamos seu currículo por uma análise de compatibilidade ATS e buscamos vagas em várias plataformas.</p>
+    <div class="drop" id="drop" onclick="document.getElementById('file').click()">
+      <div class="icon">📄</div>
+      <h2>Envie seu currículo</h2>
+      <p>Arraste aqui ou clique para escolher — PDF ou DOCX.</p>
+      <p style="margin-top:16px"><span class="btn primary">Escolher arquivo</span></p>
+      <p class="hint" id="fileName"></p>
+    </div>
+    <input type="file" id="file" accept=".pdf,.docx,.doc" class="hidden" onchange="upload()">
+    <p class="hint">Seus dados ficam só nesta sessão, no seu computador.</p>
+  </div>
+
+  <!-- ETAPA 2: APP -->
+  <div id="appView" class="hidden">
+    <div class="profilebar">
+      <div class="gauge">
+        <div class="ring" id="ring"><span id="ringv">--</span></div>
+        <div>
+          <div class="muted" style="font-size:12px">Nota ATS (formato)</div>
+          <a href="#" class="link" onclick="showFormat();return false;">Ver detalhes</a>
+        </div>
+      </div>
+      <div style="flex:1; min-width:160px">
+        <div class="who" id="pName">—</div>
+        <div class="muted" id="pInfo">—</div>
+      </div>
+      <div>
+        <div class="field-label">Senioridade</div>
+        <select id="seniority" onchange="saveSeniority()" style="width:auto;padding:7px 10px">
+          <option value="">Não informado</option>
+          <option value="estagiário">Estagiário</option>
+          <option value="júnior">Júnior</option>
+          <option value="pleno">Pleno</option>
+          <option value="sênior">Sênior</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="layout">
+      <div class="panel">
+        <label>Setor / cargo (palavras-chave)</label>
+        <input type="text" id="keywords" placeholder="ex: desenvolvedor full stack">
+        <label>Localização</label>
+        <input type="text" id="location" placeholder="ex: Brasil, Remote, Portugal" value="Brasil">
+        <label>Modelo de trabalho</label>
+        <div class="chips" id="workplace">
+          <label class="chip"><input type="checkbox" value="remoto" checked> Remoto</label>
+          <label class="chip"><input type="checkbox" value="hibrido"> Híbrido</label>
+          <label class="chip"><input type="checkbox" value="presencial"> Presencial</label>
+        </div>
+        <label>Tipo de vaga</label>
+        <div class="chips" id="job_type">
+          <label class="chip"><input type="checkbox" value="efetivo"> Efetivo</label>
+          <label class="chip"><input type="checkbox" value="estagio"> Estágio</label>
+          <label class="chip"><input type="checkbox" value="pj"> PJ</label>
+          <label class="chip"><input type="checkbox" value="temporario"> Temporário</label>
+        </div>
+        <label>Nível</label>
+        <div class="chips" id="experience">
+          <label class="chip"><input type="checkbox" value="estagio"> Estágio</label>
+          <label class="chip"><input type="checkbox" value="junior"> Júnior</label>
+          <label class="chip"><input type="checkbox" value="pleno"> Pleno</label>
+          <label class="chip"><input type="checkbox" value="senior"> Sênior</label>
+        </div>
+        <label>Publicadas em</label>
+        <select id="date_posted">
+          <option value="qualquer">Qualquer data</option>
+          <option value="24h">Últimas 24h</option>
+          <option value="semana">Última semana</option>
+          <option value="mes">Último mês</option>
+        </select>
+        <div class="label-row">
+          <label>Fontes</label>
+          <span class="link" onclick="toggleAllSources()">selecionar todas</span>
+        </div>
+        <div class="chips" id="sources">
+          <label class="chip"><input type="checkbox" value="gupy" checked> Gupy</label>
+          <label class="chip"><input type="checkbox" value="remotive" checked> Remotive</label>
+          <label class="chip"><input type="checkbox" value="remoteok" checked> RemoteOK</label>
+          <label class="chip warn"><input type="checkbox" value="infojobs"> InfoJobs *</label>
+          <label class="chip warn"><input type="checkbox" value="linkedin"> LinkedIn *</label>
+        </div>
+        <div class="hint">* abrem um navegador (mais lento; LinkedIn pede login)</div>
+        <label>Máx. por fonte</label>
+        <input type="number" id="limit" value="20" min="1" max="100">
+        <button class="go" id="go" onclick="search()">Buscar vagas</button>
+      </div>
+
+      <div id="results">
+        <div class="empty">
+          <div class="big">🔍</div>
+          Preencha os filtros e clique em <b>Buscar vagas</b>.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<dialog id="modal">
+  <div class="dh">
+    <span id="modalTitle">Detalhes</span>
+    <button class="x" onclick="document.getElementById('modal').close()">&times;</button>
+  </div>
+  <div class="body" id="modalBody"></div>
+  <div class="row" id="modalRow">
+    <span id="modalLeft"></span>
+    <button class="btn primary" onclick="document.getElementById('modal').close()">Fechar</button>
+  </div>
+</dialog>
+
+<div id="toasts"></div>
+
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
