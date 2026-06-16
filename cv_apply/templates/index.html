@@ -75,6 +75,10 @@
 
     <div class="layout">
       <div class="panel">
+        <div class="label-row panel-head">
+          <label style="margin:0">Filtros <span id="filterCount" class="fcount hidden">0</span></label>
+          <span class="link" onclick="clearFilters()">limpar</span>
+        </div>
         <label for="sector">Setor / área</label>
         <select id="sector" onchange="onSectorChange()">
           <option value="">Selecione…</option>
@@ -190,6 +194,8 @@
   <button class="btn small primary" onclick="openCompare()">Comparar</button>
   <button class="btn small ghost" onclick="clearCompare()">Limpar</button>
 </div>
+
+<button id="toTop" class="to-top" aria-label="Voltar ao topo" title="Voltar ao topo">↑</button>
 
 <div id="toasts"></div>
 

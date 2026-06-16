@@ -48,13 +48,20 @@ function jobMeta(j) {
 function saveFav() { lsSet(FAVORITES_KEY, FAVORITES); }
 function saveApplied() { lsSet(APPLIED_KEY, APPLIED); }
 
+const TOAST_ICONS = { success: "✓", error: "✕", warn: "!", "": "›" };
 function toast(msg, type) {
+  const wrap = $("toasts");
+  // mantém no máximo 4 toasts visíveis
+  while (wrap.children.length >= 4) wrap.firstElementChild.remove();
   const t = document.createElement("div");
   t.className = "toast " + (type || "");
   t.setAttribute("role", "status");
-  t.textContent = msg;
-  $("toasts").appendChild(t);
-  setTimeout(() => { t.style.opacity = "0"; t.style.transition = "opacity .3s"; setTimeout(() => t.remove(), 300); }, 3800);
+  t.title = "Clique para dispensar";
+  t.innerHTML = '<span class="toast-ic">' + (TOAST_ICONS[type || ""] || "›") + "</span><span>" + esc(msg) + "</span>";
+  const dismiss = () => { t.classList.add("out"); setTimeout(() => t.remove(), 280); };
+  t.addEventListener("click", dismiss);
+  wrap.appendChild(t);
+  setTimeout(dismiss, 3800);
 }
 
 async function postJSON(url, body) {
@@ -128,6 +135,7 @@ function showProfile() {
   $("seniority").value = PROFILE.seniority || "";
   restoreFilters();
   if (!$("sector").value) suggestSector();
+  updateFilterCount();
   renderSavedSearches();
 }
 
@@ -226,7 +234,42 @@ function applyFilterObject(f) {
   if (f.sources && f.sources.length) setChecks("sources", f.sources);
 }
 
-function restoreFilters() { applyFilterObject(lsGet(FILTERS_KEY, null)); }
+function restoreFilters() { applyFilterObject(lsGet(FILTERS_KEY, null)); updateFilterCount(); }
+
+/* Conta filtros "ativos" (diferentes do padrão) para o indicador. */
+function countActiveFilters() {
+  let n = 0;
+  if ($("sector").value) n++;
+  if (($("keywords").value || "").trim()) n++;
+  if (($("location").value || "").trim().toLowerCase() !== "brasil") n++;
+  const wp = getChecked("workplace");
+  if (wp.length !== 1 || wp[0] !== "remoto") n++;
+  if (getChecked("job_type").length) n++;
+  if (getChecked("experience").length) n++;
+  if ($("date_posted").value !== "qualquer") n++;
+  return n;
+}
+
+function updateFilterCount() {
+  const badge = $("filterCount");
+  if (!badge) return;
+  const n = countActiveFilters();
+  badge.textContent = n;
+  badge.classList.toggle("hidden", n === 0);
+}
+
+function clearFilters() {
+  $("sector").value = "";
+  $("keywords").value = "";
+  $("location").value = "Brasil";
+  $("date_posted").value = "qualquer";
+  setChecks("workplace", ["remoto"]);
+  setChecks("job_type", []);
+  setChecks("experience", []);
+  saveFilters();
+  updateFilterCount();
+  toast("Filtros limpos.", "");
+}
 
 function toggleAllSources() {
   const boxes = document.querySelectorAll("#sources input");
@@ -276,28 +319,36 @@ function skeletons(n) {
 }
 
 async function search() {
-  const btn = $("go"); btn.disabled = true; btn.textContent = "Buscando...";
-  $("results").innerHTML = skeletons(4);
+  const btn = $("go");
+  const restore = () => { btn.disabled = false; btn.classList.remove("loading"); btn.textContent = "Buscar vagas"; };
   const payload = collectFilters();
   saveFilters();
-  if (!payload.sources.length) { toast("Selecione ao menos uma fonte.", "error"); btn.disabled = false; btn.textContent = "Buscar vagas"; return; }
-  if (!payload.sector && !(payload.keywords || "").trim()) { toast("Escolha um setor ou informe palavras-chave.", "error"); btn.disabled = false; btn.textContent = "Buscar vagas"; return; }
+  if (!payload.sources.length) { toast("Selecione ao menos uma fonte.", "error"); return; }
+  if (!payload.sector && !(payload.keywords || "").trim()) { toast("Escolha um setor ou informe palavras-chave.", "error"); return; }
+
+  btn.disabled = true; btn.classList.add("loading");
+  btn.innerHTML = '<span class="btn-spin"></span> Buscando…';
+  $("results").innerHTML = skeletons(4);
   try {
     const d = await postJSON("/api/search", payload);
-    if (d.error) { $("results").innerHTML = '<div class="empty"><div class="big">⚠️</div>' + esc(d.error) + "</div>"; }
-    else {
+    if (d.error) {
+      $("results").innerHTML = '<div class="empty"><div class="big">⚠️</div>' + esc(d.error) + "</div>";
+    } else {
       LAST_JOBS = (d.jobs || []).map(j => ({ ...j, applied: j.applied || isApplied(j.id) }));
       LAST_SOURCES = d.sources || [];
       CURRENT_PAGE = 1;
       COMPARE.clear();
       updateCompareBar();
       renderResults();
+      const n = LAST_JOBS.length;
+      toast(n ? n + " vaga(s) encontrada(s)" : "Nenhuma vaga encontrada", n ? "success" : "warn");
+      scrollToResults();
     }
   } catch (e) {
     $("results").innerHTML = '<div class="empty"><div class="big">⚠️</div>Erro na busca. Tente novamente.</div>';
     toast("Erro na busca.", "error");
   }
-  btn.disabled = false; btn.textContent = "Buscar vagas";
+  restore();
 }
 
 function visibleJobs() {
@@ -342,7 +393,7 @@ function renderResults() {
   const pageJobs = jobs.slice(start, start + PAGE_SIZE);
 
   let html = sourcesStrip() + toolbar(jobs.length);
-  for (const j of pageJobs) html += jobCard(j);
+  pageJobs.forEach((j, i) => { html += jobCard(j, i); });
   html += pager(pages);
   el.innerHTML = html;
 }
@@ -378,20 +429,21 @@ function toolbar(total) {
     + '<option value="ats"' + (SORT_KEY === "ats" ? " selected" : "") + '>ATS</option>'
     + '<option value="title"' + (SORT_KEY === "title" ? " selected" : "") + '>Título</option>'
     + '</select></label>'
-    + '<button class="btn small ' + (ONLY_FAVORITES ? "primary" : "ghost") + '" onclick="toggleOnlyFavorites()">★ Favoritas (' + favCount + ')</button>'
+    + '<button id="favToggle" class="btn small ' + (ONLY_FAVORITES ? "primary" : "ghost") + '" onclick="toggleOnlyFavorites()">★ Favoritas (' + favCount + ')</button>'
     + '<button class="btn small ghost" onclick="exportJobs(\'csv\')">⬇ CSV</button>'
     + '<button class="btn small ghost" onclick="exportJobs(\'json\')">⬇ JSON</button>'
     + '</span></div>';
 }
 
-function jobCard(j) {
+function jobCard(j, index) {
   const tags = (j.skills || []).map(s => '<span class="tag">' + esc(s) + "</span>").join("");
   const pills = [];
   if (j.easy_apply) pills.push('<span class="pill easy">⚡ Easy Apply</span>');
   if (j.posted_at) pills.push('<span class="pill">' + esc(j.posted_at) + "</span>");
   const fav = isFav(j.id);
   const cmp = COMPARE.has(j.id);
-  return '<div class="card' + (j.applied ? " applied" : "") + '" id="card-' + j.id + '">'
+  const delay = index != null ? ' style="animation-delay:' + Math.min(index * 45, 360) + 'ms"' : "";
+  return '<div class="card' + (j.applied ? " applied" : "") + '" id="card-' + j.id + '"' + delay + ">"
     + '<div class="card-top"><div>'
     + '<div class="src">' + esc(j.source) + "</div>"
     + "<h3>" + esc(j.title) + "</h3>"
@@ -434,16 +486,51 @@ function exportJobs(fmt) {
   window.location.href = "/api/export?format=" + fmt;
 }
 
+/* ---------- atualização in-place (sem re-render total) ---------- */
+function replaceCard(id) {
+  const job = LAST_JOBS.find(j => j.id === id);
+  const el = $("card-" + id);
+  if (!job || !el) return null;
+  const tmp = document.createElement("div");
+  tmp.innerHTML = jobCard(job);
+  const fresh = tmp.firstElementChild;
+  fresh.style.animation = "none";  // evita re-disparar a entrada
+  el.replaceWith(fresh);
+  return fresh;
+}
+
+function updateToolbarCounts() {
+  const btn = $("favToggle");
+  if (btn) {
+    const favCount = LAST_JOBS.filter(j => isFav(j.id)).length;
+    btn.innerHTML = "★ Favoritas (" + favCount + ")";
+  }
+}
+
+function pulse(el, cls) {
+  if (!el) return;
+  el.classList.remove(cls);
+  void el.offsetWidth;  // reflow para reiniciar a animação
+  el.classList.add(cls);
+}
+
 /* ---------- favorites ---------- */
 function toggleFavorite(id) {
-  if (isFav(id)) {
+  const wasFav = isFav(id);
+  if (wasFav) {
     delete FAVORITES[id];
   } else {
     const job = LAST_JOBS.find(j => j.id === id);
     FAVORITES[id] = job ? jobMeta(job) : { id };
   }
   saveFav();
-  renderResults();
+  if (ONLY_FAVORITES) {
+    renderResults();  // a vaga sai/entra da lista filtrada
+    return;
+  }
+  const card = replaceCard(id);
+  updateToolbarCounts();
+  if (card && !wasFav) pulse(card.querySelector(".fav"), "pop");
 }
 
 /* ---------- modal ---------- */
@@ -508,7 +595,7 @@ async function cover(id, lang) {
 }
 
 /* ---------- applied ---------- */
-async function markApplied(id, val) {
+async function markApplied(id, val, skipRender) {
   const job = LAST_JOBS.find(j => j.id === id);
   if (val) {
     const meta = job ? jobMeta(job) : { id };
@@ -519,6 +606,7 @@ async function markApplied(id, val) {
   }
   saveApplied();
   if (job) job.applied = val;
+  if (!skipRender) replaceCard(id);
   try { await postJSON("/api/applied", { id, applied: val }); } catch (e) {}
 }
 
@@ -526,7 +614,7 @@ async function toggleApplied(id) {
   const job = LAST_JOBS.find(j => j.id === id);
   const wasApplied = job ? job.applied : isApplied(id);
   await markApplied(id, !wasApplied);
-  renderResults();
+  if (!wasApplied) toast("Marcada como aplicada ✓", "success");
 }
 
 /* ---------- comparar vagas ---------- */
@@ -626,3 +714,65 @@ function removeApplied(id) {
   openDashboard();
   renderResults();
 }
+
+/* ---------- micro-interações globais ---------- */
+// Efeito ripple em botões
+document.addEventListener("pointerdown", e => {
+  const btn = e.target.closest(".btn, .go");
+  if (!btn || btn.disabled) return;
+  const r = btn.getBoundingClientRect();
+  const ink = document.createElement("span");
+  ink.className = "ripple";
+  const size = Math.max(r.width, r.height);
+  ink.style.width = ink.style.height = size + "px";
+  ink.style.left = (e.clientX - r.left - size / 2) + "px";
+  ink.style.top = (e.clientY - r.top - size / 2) + "px";
+  btn.appendChild(ink);
+  setTimeout(() => ink.remove(), 600);
+});
+
+// Atalhos de teclado
+document.addEventListener("keydown", e => {
+  const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
+  // "/" foca a busca
+  if (e.key === "/" && !typing) {
+    const kw = $("keywords");
+    if (kw && !$("appView").classList.contains("hidden")) { e.preventDefault(); kw.focus(); kw.select(); }
+    return;
+  }
+  // Enter dispara a busca quando focado em campos de filtro de texto
+  if (e.key === "Enter" && (document.activeElement.id === "keywords" || document.activeElement.id === "location")) {
+    e.preventDefault();
+    if (typeof search === "function") search();
+    return;
+  }
+  // Esc limpa a seleção de comparação (quando não há modal aberto)
+  if (e.key === "Escape" && !$("modal").open && COMPARE.size) {
+    clearCompare();
+  }
+});
+
+// Botão "voltar ao topo"
+const toTop = $("toTop");
+if (toTop) {
+  window.addEventListener("scroll", () => {
+    toTop.classList.toggle("show", window.scrollY > 600);
+  }, { passive: true });
+  toTop.addEventListener("click", () => window.scrollTo({ top: 0, behavior: "smooth" }));
+}
+
+// Rola até os resultados após a busca (útil no mobile)
+function scrollToResults() {
+  if (window.innerWidth <= 880) {
+    const el = $("results");
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+}
+
+// Atualiza o indicador de filtros ativos sempre que algo muda no painel
+(function () {
+  const panel = document.querySelector(".panel");
+  if (!panel) return;
+  panel.addEventListener("input", updateFilterCount);
+  panel.addEventListener("change", updateFilterCount);
+})();
