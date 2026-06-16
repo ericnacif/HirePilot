@@ -3,36 +3,48 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0a0c12">
 <title>VagaMatch — encontre vagas que combinam com você</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
+<div class="bg-orbs" aria-hidden="true"><span class="orb orb-1"></span><span class="orb orb-2"></span><span class="orb orb-3"></span></div>
 <header>
-  <div class="logo">V</div>
-  <div>
-    <h1>VagaMatch</h1>
+  <div class="brand">
+    <div class="logo">V</div>
+    <div class="brand-text">
+      <h1>VagaMatch</h1>
+      <span class="sub">Currículo → ATS → vagas que combinam</span>
+    </div>
   </div>
-  <span class="sub">— suba seu currículo, veja sua nota ATS e encontre vagas que combinam</span>
   <span class="spacer"></span>
-  <button id="dashBtn" class="btn small ghost hidden" onclick="openDashboard()" aria-label="Abrir painel">📊 Painel</button>
-  <button id="themeBtn" class="btn small ghost" onclick="toggleTheme()" aria-label="Alternar tema">☀️</button>
+  <button id="dashBtn" class="btn small ghost hidden" onclick="openDashboard()" aria-label="Abrir painel"><span class="bi">📊</span> Painel</button>
+  <button id="themeBtn" class="btn small ghost icon-btn" onclick="toggleTheme()" aria-label="Alternar tema">☀️</button>
   <button id="resetBtn" class="btn small ghost hidden" onclick="resetProfile()">Trocar currículo</button>
 </header>
 
 <div class="container">
   <!-- ETAPA 1: UPLOAD -->
   <div id="uploadView" class="upload-box">
-    <p class="lead">Encontre a vaga certa pra você</p>
-    <p class="lead-sub">Enviamos seu currículo por uma análise de compatibilidade ATS e buscamos vagas em várias plataformas.</p>
+    <span class="badge">✦ Análise de compatibilidade com IA</span>
+    <h2 class="lead">Encontre a vaga certa <span class="grad">pra você</span></h2>
+    <p class="lead-sub">Suba seu currículo, receba sua nota ATS na hora e descubra vagas ranqueadas por compatibilidade em várias plataformas.</p>
     <div class="drop" id="drop" onclick="document.getElementById('file').click()">
       <div class="icon">📄</div>
       <h2>Envie seu currículo</h2>
       <p>Arraste aqui ou clique para escolher — PDF ou DOCX.</p>
-      <p style="margin-top:16px"><span class="btn primary">Escolher arquivo</span></p>
+      <p style="margin-top:18px"><span class="btn primary lg">Escolher arquivo</span></p>
       <p class="hint" id="fileName"></p>
     </div>
     <input type="file" id="file" accept=".pdf,.docx,.doc" class="hidden" onchange="upload()">
-    <p class="hint">Seus dados ficam só nesta sessão, no seu computador.</p>
+    <div class="features">
+      <div class="feature"><span class="fi">🎯</span><div><b>Match inteligente</b><span>Ranqueia por skills, senioridade e local</span></div></div>
+      <div class="feature"><span class="fi">📊</span><div><b>Score ATS</b><span>Veja como seu currículo se sai</span></div></div>
+      <div class="feature"><span class="fi">🔒</span><div><b>Privado</b><span>Seus dados ficam só nesta sessão</span></div></div>
+    </div>
   </div>
 
   <!-- ETAPA 2: APP -->
