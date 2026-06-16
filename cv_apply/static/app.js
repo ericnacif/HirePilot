@@ -39,6 +39,104 @@ const FAVORITES_KEY = LS_PREFIX + "favorites";
 const APPLIED_KEY = LS_PREFIX + "applied";
 const THEME_KEY = LS_PREFIX + "theme";
 const SAVED_KEY = LS_PREFIX + "savedSearches";
+const SIMPLE_MODE_KEY = LS_PREFIX + "simpleMode";
+
+const SENIORITY_PRO = [
+  { value: "", label: "Não informado" },
+  { value: "estagiário", label: "Estagiário" },
+  { value: "júnior", label: "Júnior" },
+  { value: "pleno", label: "Pleno" },
+  { value: "sênior", label: "Sênior" },
+];
+const SENIORITY_SIMPLE = [
+  { value: "", label: "Não sei / tanto faz" },
+  { value: "estagiário", label: "Primeiro emprego ou aprendiz" },
+  { value: "júnior", label: "Já trabalhei antes" },
+  { value: "pleno", label: "Alguns anos de experiência" },
+  { value: "sênior", label: "Muita experiência" },
+];
+
+function isSimpleMode() {
+  const v = localStorage.getItem(SIMPLE_MODE_KEY);
+  if (v === null) return true;
+  return v === "1" || v === "true";
+}
+
+function searchBtnLabel() {
+  return isSimpleMode() ? "Buscar vagas agora" : "Buscar vagas";
+}
+
+function simpleScoreLabel(score) {
+  const s = Math.round(score || 0);
+  if (s >= 65) return "Combina bastante";
+  if (s >= 45) return "Combina um pouco";
+  return "Combina pouco";
+}
+
+function renderSeniorityOptions() {
+  const sel = $("seniority");
+  if (!sel) return;
+  const cur = sel.value;
+  const opts = isSimpleMode() ? SENIORITY_SIMPLE : SENIORITY_PRO;
+  sel.innerHTML = opts.map(o =>
+    '<option value="' + esc(o.value) + '">' + esc(o.label) + "</option>"
+  ).join("");
+  if (opts.some(o => o.value === cur)) sel.value = cur;
+}
+
+function applySimpleDefaults() {
+  const sectorEl = $("sector");
+  if (sectorEl && (!sectorEl.value || sectorEl.value === "tec_all")) {
+    if (sectorEl.querySelector('option[value="emprego_geral"]')) sectorEl.value = "emprego_geral";
+  }
+  document.querySelectorAll("#sources input").forEach(b => {
+    if (b.closest(".pro-only")) { b.checked = false; return; }
+    b.checked = b.value === "gupy" || b.value === "indeed";
+  });
+  if ($("broad")) $("broad").checked = true;
+  if ($("semantic")) $("semantic").checked = false;
+  if ($("only_new")) $("only_new").checked = false;
+}
+
+function applySimpleModeUI() {
+  const simple = isSimpleMode();
+  document.body.classList.toggle("simple-mode", simple);
+  const btn = $("modeBtn");
+  if (btn) {
+    btn.textContent = simple ? "Modo completo" : "Modo rápido";
+    btn.title = simple
+      ? "Ver opções avançadas (ATS, match profundo…)"
+      : "Voltar ao modo simples para buscar emprego rápido";
+  }
+  renderSeniorityOptions();
+  if ($("headerSub")) $("headerSub").textContent = simple ? "Ache emprego mais rápido" : "Sua jornada. Nossa inteligência.";
+  if ($("statCompatLabel")) $("statCompatLabel").textContent = simple ? "Combina com você" : "Compatibilidade geral";
+  if ($("seniorityLabel")) $("seniorityLabel").textContent = simple ? "Experiência" : "Senioridade";
+  if ($("uploadBadge")) $("uploadBadge").textContent = simple ? "✦ EMPREGO MAIS PERTO DE VOCÊ" : "✦ SUA JORNADA. NOSSA INTELIGÊNCIA.";
+  if ($("uploadLead")) {
+    $("uploadLead").innerHTML = simple
+      ? 'Encontre vaga <span class="grad">sem complicação</span>'
+      : 'Seu copiloto <span class="grad">pra vaga ideal</span>';
+  }
+  if ($("uploadSub")) {
+    $("uploadSub").innerHTML = simple
+      ? "Mande seu currículo em PDF ou Word. A gente busca vagas e mostra quais combinam mais com você."
+      : 'Envie seu currículo, busque em várias plataformas e veja o <b>match %</b> de cada vaga — você decide onde aplicar.';
+  }
+  if ($("dashBtn") && PROFILE) $("dashBtn").classList.toggle("hidden", simple);
+  updateStatCards();
+}
+
+function toggleSimpleMode() {
+  const next = !isSimpleMode();
+  localStorage.setItem(SIMPLE_MODE_KEY, next ? "1" : "0");
+  if (next) applySimpleDefaults();
+  applySimpleModeUI();
+  saveFilters();
+  updateFilterCount();
+  if (LAST_JOBS.length) renderResults();
+  toast(next ? "Modo rápido — linguagem simples e menos opções." : "Modo completo — todas as ferramentas.", "");
+}
 
 /* ---------- helpers ---------- */
 function $(id) { return document.getElementById(id); }
@@ -155,7 +253,7 @@ function updateStatCards() {
   $("statJobs").textContent = String(n);
   if (n) {
     const avg = Math.round(LAST_JOBS.reduce((s, j) => s + (j.score || 0), 0) / n);
-    $("statCompat").textContent = avg + "%";
+    $("statCompat").textContent = isSimpleMode() ? simpleScoreLabel(avg) : avg + "%";
   } else {
     $("statCompat").textContent = ats != null ? ats + "%" : "--";
   }
@@ -208,7 +306,7 @@ function showProfile() {
   $("uploadView").classList.add("hidden");
   $("appView").classList.remove("hidden");
   $("resetBtn").classList.remove("hidden");
-  $("dashBtn").classList.remove("hidden");
+  if ($("dashBtn")) $("dashBtn").classList.toggle("hidden", isSimpleMode());
   $("pName").textContent = firstName(PROFILE.name);
   $("pInfo").textContent = profileInfo();
   $("seniority").value = PROFILE.seniority || "";
@@ -302,6 +400,16 @@ async function deleteAlert(id) {
 
 /* Heurística: sugere um setor a partir do cargo/skills detectados no currículo. */
 const SECTOR_HINTS = [
+  ["varejo", ["vendedor", "vendedora", "caixa", "loja", "balconista"]],
+  ["operacional", ["operador", "produção", "estoque", "almoxarifado", "fábrica"]],
+  ["limpeza", ["limpeza", "faxina", "zelador"]],
+  ["motorista", ["motorista", "entregador", "cnh", "motoboy"]],
+  ["cozinha", ["cozinheiro", "cozinheira", "restaurante"]],
+  ["primeiro_emprego", ["aprendiz", "jovem aprendiz", "primeiro emprego"]],
+  ["atendimento", ["atendente", "telefonista", "call center", "sac"]],
+  ["administrativo", ["administrativo", "auxiliar administrativo", "recepcionista", "escritório"]],
+  ["servicos", ["serviços gerais", "manutenção", "porteiro", "zelador"]],
+  ["emprego_geral", ["auxiliar", "assistente", "operador"]],
   ["tec_dados", ["cientista de dados", "engenheiro de dados", "analista de dados", "data scientist", "data engineer", "bi", "power bi", "etl"]],
   ["tec_devops", ["devops", "sre", "infraestrutura", "cloud", "kubernetes", "terraform"]],
   ["tec_qa", ["qa", "quality assurance", "analista de testes", "tester"]],
@@ -369,7 +477,10 @@ function onSectorChange() { saveFilters(); }
 function collectFilters() {
   const salMin = parseInt($("salary_min").value, 10);
   const salMax = parseInt($("salary_max").value, 10);
-  const limit = parseInt($("limit").value) || 40;
+  const simple = isSimpleMode();
+  const limit = simple
+    ? (parseInt($("limitSimple")?.value, 10) || 50)
+    : (parseInt($("limit").value, 10) || 40);
   const capField = parseInt($("global_cap").value, 10);
   return {
     sector: $("sector").value, keywords: $("keywords").value,
@@ -377,11 +488,11 @@ function collectFilters() {
     workplace: getChecked("workplace"), job_type: getChecked("job_type"),
     experience: getChecked("experience"), date_posted: $("date_posted").value,
     sources: getChecked("sources"), limit,
-    global_cap: capField > 0 ? capField : null,
+    global_cap: simple ? null : (capField > 0 ? capField : null),
     no_cache: $("no_cache") ? $("no_cache").checked : false,
     broad: $("broad") ? $("broad").checked : true,
-    only_new: $("only_new") ? $("only_new").checked : false,
-    semantic: $("semantic") ? $("semantic").checked : true,
+    only_new: simple ? false : ($("only_new") ? $("only_new").checked : false),
+    semantic: simple ? false : ($("semantic") ? $("semantic").checked : true),
     salary_min: salMin > 0 ? salMin : null,
     salary_max: salMax > 0 ? salMax : null,
   };
@@ -419,7 +530,8 @@ function restoreFilters() { applyFilterObject(lsGet(FILTERS_KEY, null)); updateF
 function countActiveFilters() {
   let n = 0;
   const sector = $("sector").value;
-  if (sector && sector !== "tec_all") n++;
+  const defaultSector = isSimpleMode() ? "emprego_geral" : "tec_all";
+  if (sector && sector !== defaultSector) n++;
   if (($("keywords").value || "").trim()) n++;
   if (($("location").value || "").trim().toLowerCase() !== "brasil") n++;
   if (getChecked("workplace").length) n++;
@@ -439,14 +551,14 @@ function updateFilterCount() {
 }
 
 function clearFilters() {
-  $("sector").value = "tec_all";
+  $("sector").value = isSimpleMode() ? "emprego_geral" : "tec_all";
   $("keywords").value = "";
   $("location").value = "Brasil";
   $("date_posted").value = "qualquer";
   $("limit").value = "40";
   if ($("broad")) $("broad").checked = true;
   if ($("only_new")) $("only_new").checked = false;
-  if ($("semantic")) $("semantic").checked = true;
+  if ($("semantic")) $("semantic").checked = !isSimpleMode();
   $("salary_min").value = "";
   $("salary_max").value = "";
   $("global_cap").value = "";
@@ -507,11 +619,15 @@ function skeletons(n) {
 
 async function search() {
   const btn = $("go");
-  const restore = () => { btn.disabled = false; btn.classList.remove("loading"); btn.textContent = "Buscar vagas"; };
+  const label = searchBtnLabel();
+  const restore = () => { btn.disabled = false; btn.classList.remove("loading"); btn.textContent = label; };
   const payload = collectFilters();
   saveFilters();
-  if (!payload.sources.length) { toast("Selecione ao menos uma fonte.", "error"); return; }
-  if (!payload.sector && !(payload.keywords || "").trim()) { toast("Escolha um setor ou informe palavras-chave.", "error"); return; }
+  if (!payload.sources.length) { toast("Selecione ao menos um site para buscar.", "error"); return; }
+  if (!payload.sector && !(payload.keywords || "").trim()) {
+    toast(isSimpleMode() ? "Escolha a área ou digite um cargo." : "Escolha um setor ou informe palavras-chave.", "error");
+    return;
+  }
 
   btn.disabled = true; btn.classList.add("loading");
   btn.innerHTML = '<span class="btn-spin"></span> Buscando…';
@@ -553,7 +669,9 @@ function applySearchResult(d, opts) {
   if (!opts.partial) {
     const n = LAST_JOBS.length;
     const newN = LAST_META.new_count || 0;
-    let msg = n ? n + " vaga(s) ranqueadas" : "Nenhuma vaga encontrada";
+    let msg = n
+      ? (isSimpleMode() ? n + " vaga(s) encontradas" : n + " vaga(s) ranqueadas")
+      : (isSimpleMode() ? "Nenhuma vaga por enquanto — tente outra área ou cidade" : "Nenhuma vaga encontrada");
     if (newN) msg += " · " + newN + " nova(s)";
     toast(msg, n ? "success" : "warn");
     scrollToResults();
@@ -814,20 +932,39 @@ function scoreBar(score, label) {
     + '<span class="score-meter-val">' + pct + "%</span></div>";
 }
 
+function scoreBarSimple(score) {
+  const pct = Math.max(0, Math.min(100, Math.round(score || 0)));
+  const cls = scoreClass(pct);
+  const label = simpleScoreLabel(pct);
+  return '<div class="score-meter ' + cls + '" title="' + esc(label) + '">'
+    + '<div class="score-meter-fill" style="width:' + pct + '%"></div>'
+    + '<span class="score-meter-val">' + esc(label) + "</span></div>";
+}
+
 function jobCard(j, index) {
+  const simple = isSimpleMode();
   const tags = (j.skills || []).map(s => '<span class="tag">' + esc(s) + "</span>").join("");
   const pills = [];
   if (j.is_new) pills.push('<span class="pill new">✦ Nova</span>');
-  if (j.easy_apply) pills.push('<span class="pill easy">⚡ Easy Apply</span>');
+  if (!simple && j.easy_apply) pills.push('<span class="pill easy">⚡ Easy Apply</span>');
   if (j.salary) pills.push('<span class="pill sal">' + esc(j.salary) + "</span>");
   if (j.posted_at) pills.push('<span class="pill">' + esc(j.posted_at) + "</span>");
   const fav = isFav(j.id);
   const cmp = COMPARE.has(j.id);
   const delay = index != null ? ' style="animation-delay:' + Math.min(index * 45, 360) + 'ms"' : "";
   const reasons = j.reasons_text || (Array.isArray(j.reasons) ? j.reasons.join("; ") : (j.reasons || ""));
+  const whyTitle = simple ? "Por que apareceu aqui?" : "Por que essa vaga?";
   const reasonsHtml = reasons
-    ? '<details class="why-job"><summary>Por que essa vaga?</summary><p>' + esc(reasons) + "</p></details>"
+    ? '<details class="why-job"><summary>' + whyTitle + "</summary><p>" + esc(reasons) + "</p></details>"
     : "";
+  const tips = (j.cv_tips || []).slice(0, 2);
+  const tipsHtml = simple && tips.length
+    ? '<p class="cv-tip"><b>Dica:</b> ' + esc(tips.join(" ")) + "</p>"
+    : "";
+  const scoreHtml = simple
+    ? '<span class="score-bar-label">Combina com você</span>' + scoreBarSimple(j.score)
+    : '<span class="score-bar-label">Match</span>' + scoreBar(j.score, "Match")
+      + '<span class="score-bar-label pro-score-ats">ATS</span>' + scoreBar(j.ats, "Cobertura ATS");
   return '<div class="card' + (j.applied ? " applied" : "") + '" id="card-' + j.id + '"' + delay + ">"
     + '<div class="card-top"><div>'
     + '<div class="src">' + esc(j.source) + "</div>"
@@ -839,21 +976,21 @@ function jobCard(j, index) {
     + "</div>"
     + "</div>"
     + '<div class="score-bars">'
-    + '<span class="score-bar-label">Match</span>' + scoreBar(j.score, "Match")
-    + '<span class="score-bar-label">ATS</span>' + scoreBar(j.ats, "Cobertura ATS")
+    + scoreHtml
     + "</div>"
     + (pills.length ? '<div class="tags">' + pills.join("") + "</div>" : "")
     + (j.description ? '<div class="desc">' + esc(j.description) + "</div>" : "")
     + reasonsHtml
-    + (tags ? '<div class="tags">' + tags + "</div>" : "")
+    + tipsHtml
+    + (tags && !simple ? '<div class="tags">' + tags + "</div>" : "")
     + '<div class="actions">'
     + '<button class="btn" onclick="openJobPreview(\'' + j.id + "')\">Ver vaga</button>"
-    + '<a class="btn primary" href="' + j.url + '" target="_blank" rel="noopener">Aplicar</a>'
-    + '<button class="btn" onclick="atsDetail(\'' + j.id + "')\">Análise ATS</button>"
-    + '<button class="btn" onclick="tailor(\'' + j.id + "')\">Adaptar currículo</button>"
-    + '<button class="btn" onclick="cover(\'' + j.id + "')\">Carta</button>"
-    + '<button class="btn ghost" onclick="toggleApplied(\'' + j.id + "')\">" + (j.applied ? "Desmarcar" : "Já apliquei") + "</button>"
-    + '<label class="cmp-check"><input type="checkbox" ' + (cmp ? "checked" : "") + " onchange=\"toggleCompare('" + j.id + "')\"> comparar</label>"
+    + '<a class="btn primary" href="' + j.url + '" target="_blank" rel="noopener">Candidatar-se</a>'
+    + (simple ? "" : '<button class="btn" onclick="atsDetail(\'' + j.id + "')\">Análise ATS</button>"
+      + '<button class="btn" onclick="tailor(\'' + j.id + "')\">Adaptar currículo</button>"
+      + '<button class="btn" onclick="cover(\'' + j.id + "')\">Carta</button>"
+      + '<label class="cmp-check"><input type="checkbox" ' + (cmp ? "checked" : "") + " onchange=\"toggleCompare('" + j.id + "')\"> comparar</label>")
+    + '<button class="btn ghost" onclick="toggleApplied(\'' + j.id + "')\">" + (j.applied ? "Desmarcar" : "Já me candidatei") + "</button>"
     + "</div></div>";
 }
 
@@ -1266,6 +1403,8 @@ async function loadAppMeta() {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
+  applySimpleModeUI();
+  if (isSimpleMode() && !lsGet(FILTERS_KEY, null)) applySimpleDefaults();
   loadAppMeta();
   maybeShowOnboard();
 });

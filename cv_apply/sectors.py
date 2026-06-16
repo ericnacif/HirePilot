@@ -37,6 +37,14 @@ SECTOR_PRIMARY_TERM: dict[str, str] = {
     "saude": "saúde",
     "educacao": "professor",
     "outro": "",
+    "emprego_geral": "auxiliar administrativo",
+    "varejo": "vendedor",
+    "servicos": "serviços gerais",
+    "operacional": "operador de produção",
+    "primeiro_emprego": "auxiliar",
+    "limpeza": "auxiliar de limpeza",
+    "motorista": "motorista",
+    "cozinha": "cozinheiro",
 }
 
 
@@ -80,6 +88,17 @@ SECTOR_SEARCH_QUERIES: dict[str, list[str]] = {
     "engenharia": ["engenheiro", "engenharia", "projetos", "manutenção"],
     "saude": ["saúde", "enfermagem", "médico", "clínico", "hospitalar"],
     "educacao": ["professor", "educação", "ensino", "pedagógico", "instrutor"],
+    "emprego_geral": [
+        "auxiliar", "assistente", "operador", "atendente", "recepcionista",
+        "balconista", "office boy", "office-boy", "aprendiz",
+    ],
+    "varejo": ["vendedor", "vendedora", "caixa", "loja", "atendente", "balconista", "varejo"],
+    "servicos": ["serviços gerais", "manutenção", "zelador", "porteiro", "jardineiro"],
+    "operacional": ["produção", "operador", "estoque", "expedição", "almoxarifado", "fábrica"],
+    "primeiro_emprego": ["aprendiz", "jovem aprendiz", "trainee", "auxiliar", "estágio", "iniciante"],
+    "limpeza": ["limpeza", "faxina", "auxiliar de limpeza", "serviços gerais"],
+    "motorista": ["motorista", "entregador", "cnh", "caminhão", "motoboy"],
+    "cozinha": ["cozinheiro", "cozinheira", "auxiliar de cozinha", "restaurante", "buffet"],
 }
 
 
@@ -149,6 +168,14 @@ SECTOR_SKILLS: dict[str, list[str]] = {
     "saude": ["enfermagem", "saúde", "paciente", "clínico"],
     "educacao": ["educação", "ensino", "didática", "pedagógico"],
     "outro": [],
+    "emprego_geral": ["atendimento", "organização", "excel", "comunicação", "rotinas"],
+    "varejo": ["atendimento", "vendas", "caixa", "estoque", "cliente"],
+    "servicos": ["manutenção", "limpeza", "organização", "pontualidade"],
+    "operacional": ["produção", "qualidade", "segurança", "equipe"],
+    "primeiro_emprego": ["comunicação", "equipe", "aprendizado", "organização"],
+    "limpeza": ["limpeza", "organização", "higiene"],
+    "motorista": ["cnh", "direção", "entregas", "pontualidade"],
+    "cozinha": ["higiene", "cozinha", "alimentos", "equipe"],
 }
 
 

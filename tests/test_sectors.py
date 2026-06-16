@@ -32,6 +32,8 @@ def test_sector_query_primario():
     assert sector_query("tec_dev") == "desenvolvedor"
     assert sector_query("tec_all") == "tecnologia"
     assert sector_query("fiscal") == "fiscal"
+    assert sector_query("emprego_geral") == "auxiliar administrativo"
+    assert sector_query("varejo") == "vendedor"
     assert sector_query("inexistente") == ""
 
 

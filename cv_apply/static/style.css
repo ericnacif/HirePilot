@@ -609,3 +609,10 @@ dialog .row { padding: 14px 22px; border-top: 1px solid var(--border); display: 
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: .001ms !important; transition-duration: .001ms !important; }
 }
+
+/* Modo rápido — esconde opções avançadas */
+body.simple-mode .pro-only { display: none !important; }
+body.simple-mode .score-meter .score-meter-val { font-size: 12px; white-space: nowrap; }
+body.simple-mode .cv-tip { font-size: 13px; color: var(--muted); margin: 8px 0 0; line-height: 1.45; }
+body.simple-mode .panel-head .link { display: none; }
+body.simple-mode #filterCount { display: none !important; }

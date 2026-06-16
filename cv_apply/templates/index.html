@@ -17,10 +17,11 @@
   <div class="brand">
     <img class="brand-wordmark brand-wordmark--dark" src="{{ url_for('static', filename='logo-wordmark.png') }}" alt="HirePilot" height="38">
     <img class="brand-wordmark brand-wordmark--light" src="{{ url_for('static', filename='logo-wordmark-light.png') }}" alt="HirePilot" height="38">
-    <span class="sub">Sua jornada. Nossa inteligência.</span>
+    <span class="sub" id="headerSub">Ache emprego mais rápido</span>
   </div>
   <span class="spacer"></span>
-  <button id="dashBtn" class="btn small ghost hidden" onclick="openDashboard()" aria-label="Abrir painel"><span class="bi">📊</span> Painel</button>
+  <button id="modeBtn" class="btn small ghost" type="button" onclick="toggleSimpleMode()" title="Alternar modo de uso">Modo rápido</button>
+  <button id="dashBtn" class="btn small ghost pro-only hidden" onclick="openDashboard()" aria-label="Abrir painel"><span class="bi">📊</span> Painel</button>
   <button id="themeBtn" class="btn small ghost icon-btn" onclick="toggleTheme()" aria-label="Alternar tema">☀️</button>
   <button id="resetBtn" class="btn small ghost hidden" onclick="resetProfile()">Trocar currículo</button>
 </header>
@@ -28,9 +29,9 @@
 <div class="container">
   <!-- ETAPA 1: UPLOAD -->
   <div id="uploadView" class="upload-box">
-    <span class="badge">✦ SUA JORNADA. NOSSA INTELIGÊNCIA.</span>
-    <h2 class="lead">Seu copiloto <span class="grad">pra vaga ideal</span></h2>
-    <p class="lead-sub">Envie seu currículo, busque em várias plataformas e veja o <b>match %</b> de cada vaga — você decide onde aplicar.</p>
+    <span class="badge" id="uploadBadge">✦ EMPREGO MAIS PERTO DE VOCÊ</span>
+    <h2 class="lead" id="uploadLead">Encontre vaga <span class="grad">sem complicação</span></h2>
+    <p class="lead-sub" id="uploadSub">Mande seu currículo em PDF ou Word. A gente busca vagas e mostra quais combinam mais com você.</p>
     <div class="drop" id="drop" onclick="document.getElementById('file').click()">
       <div class="icon">📄</div>
       <h2>Envie seu currículo</h2>
@@ -39,10 +40,10 @@
       <p class="hint" id="fileName"></p>
     </div>
     <input type="file" id="file" accept=".pdf,.docx,.doc" class="hidden" onchange="upload()">
-    <div class="features">
-      <div class="feature"><span class="fi">🔎</span><div><b>Busca inteligente</b><span>Várias fontes, máximo de vagas</span></div></div>
-      <div class="feature"><span class="fi">📊</span><div><b>Análise ATS</b><span>Score de formato e compatibilidade</span></div></div>
-      <div class="feature"><span class="fi">✈️</span><div><b>Copiloto</b><span>Prepara tudo — você envia</span></div></div>
+    <div class="features" id="uploadFeatures">
+      <div class="feature"><span class="fi">🔎</span><div><b>Busca em vários sites</b><span>Gupy, Indeed e mais</span></div></div>
+      <div class="feature"><span class="fi">👍</span><div><b>Veja o que combina</b><span>Nota simples em cada vaga</span></div></div>
+      <div class="feature"><span class="fi">✅</span><div><b>Você escolhe</b><span>A gente só organiza</span></div></div>
     </div>
   </div>
 
@@ -54,10 +55,10 @@
           <img src="{{ url_for('static', filename='logo.png') }}" alt="" class="sb-icon">
         </div>
         <nav class="sb-nav">
-          <button type="button" class="sb-item" onclick="openDashboard()"><span class="sb-ic">📊</span> Dashboard</button>
+          <button type="button" class="sb-item pro-only" onclick="openDashboard()"><span class="sb-ic">📊</span> Painel</button>
           <button type="button" class="sb-item on" data-sb="search" onclick="switchTab('search')"><span class="sb-ic">🔎</span> Buscar vagas</button>
           <button type="button" class="sb-item" data-sb="results" onclick="switchTab('results')"><span class="sb-ic">📋</span> Vagas <span id="resultBadgeSb" class="rbadge hidden">0</span></button>
-          <button type="button" class="sb-item" onclick="showFormat()"><span class="sb-ic">📈</span> Análise ATS</button>
+          <button type="button" class="sb-item pro-only" onclick="showFormat()"><span class="sb-ic">📈</span> Análise ATS</button>
           <button type="button" class="sb-item" onclick="resetProfile()"><span class="sb-ic">📄</span> Currículo</button>
         </nav>
       </aside>
@@ -70,21 +71,21 @@
 
         <div class="stat-cards">
           <div class="stat-card">
-            <span class="sc-label">Compatibilidade geral</span>
+            <span class="sc-label" id="statCompatLabel">Combina com você</span>
             <span class="sc-val" id="statCompat">--</span>
           </div>
-          <div class="stat-card">
+          <div class="stat-card pro-only">
             <span class="sc-label">Análise ATS</span>
             <span class="sc-val" id="statAts">--</span>
           </div>
           <div class="stat-card">
-            <span class="sc-label">Vagas para você</span>
+            <span class="sc-label">Vagas encontradas</span>
             <span class="sc-val plain" id="statJobs">0</span>
           </div>
         </div>
 
         <div class="profilebar-compact">
-          <div class="field-label">Senioridade</div>
+          <div class="field-label" id="seniorityLabel">Experiência</div>
           <select id="seniority" onchange="saveSeniority()" style="width:auto;padding:7px 10px">
             <option value="">Não informado</option>
             <option value="estagiário">Estagiário</option>
@@ -92,7 +93,7 @@
             <option value="pleno">Pleno</option>
             <option value="sênior">Sênior</option>
           </select>
-          <span class="muted" style="font-size:12px;margin-left:auto"><a href="#" class="link" onclick="showFormat();return false;">Detalhes do ATS →</a></span>
+          <span class="muted pro-only" style="font-size:12px;margin-left:auto"><a href="#" class="link" onclick="showFormat();return false;">Detalhes do ATS →</a></span>
         </div>
 
         <nav class="app-nav" role="tablist">
@@ -108,12 +109,24 @@
             </div>
 
             <details class="fblock" open>
-              <summary>O que buscar</summary>
-              <label for="sector">Setor / área</label>
+              <summary id="searchBlockTitle">O que você quer trabalhar?</summary>
+              <label for="sector" id="sectorLabel">Área</label>
               <select id="sector" onchange="onSectorChange()">
                 <option value="">Selecione…</option>
-                <optgroup label="Tecnologia">
-                  <option value="tec_all" selected>Tecnologia — todas as áreas</option>
+                <optgroup label="Emprego do dia a dia" id="ogQuick">
+                  <option value="emprego_geral" selected>Qualquer área — vagas em geral</option>
+                  <option value="varejo">Loja / varejo / caixa</option>
+                  <option value="atendimento">Atendimento / telefone</option>
+                  <option value="administrativo">Escritório / administrativo</option>
+                  <option value="servicos">Serviços gerais / manutenção</option>
+                  <option value="operacional">Fábrica / produção / estoque</option>
+                  <option value="limpeza">Limpeza / conservação</option>
+                  <option value="motorista">Motorista / entregas</option>
+                  <option value="cozinha">Cozinha / restaurante</option>
+                  <option value="primeiro_emprego">Primeiro emprego / aprendiz</option>
+                </optgroup>
+                <optgroup label="Tecnologia" class="pro-only">
+                  <option value="tec_all">Tecnologia — todas as áreas</option>
                   <option value="tec_dev">Desenvolvimento</option>
                   <option value="tec_suporte">Suporte / TI</option>
                   <option value="tec_dados">Dados / BI</option>
@@ -121,11 +134,11 @@
                   <option value="tec_qa">QA / Testes</option>
                   <option value="tec_seguranca">Segurança</option>
                 </optgroup>
-                <optgroup label="Produto & Design">
+                <optgroup label="Produto & Design" class="pro-only">
                   <option value="produto">Produto</option>
                   <option value="design">Design / UX</option>
                 </optgroup>
-                <optgroup label="Negócios">
+                <optgroup label="Negócios" class="pro-only">
                   <option value="marketing">Marketing</option>
                   <option value="vendas">Vendas / Comercial</option>
                   <option value="atendimento">Atendimento ao cliente</option>
@@ -137,24 +150,26 @@
                   <option value="juridico">Jurídico</option>
                   <option value="logistica">Logística / Supply Chain</option>
                 </optgroup>
-                <optgroup label="Outros">
+                <optgroup label="Outros" class="pro-only">
                   <option value="engenharia">Engenharia</option>
                   <option value="saude">Saúde</option>
                   <option value="educacao">Educação</option>
                   <option value="outro">Outro (usar palavras-chave)</option>
                 </optgroup>
               </select>
-              <label for="keywords">Palavras-chave (opcional)</label>
-              <input type="text" id="keywords" placeholder="ex: php, react — vazio = tudo do setor">
-              <label for="location">Localização</label>
-              <input type="text" id="location" placeholder="ex: Brasil, Remote" value="Brasil">
+              <label for="keywords" id="keywordsLabel">Cargo ou palavra (opcional)</label>
+              <input type="text" id="keywords" placeholder="ex: vendedor, auxiliar, motorista">
+              <label for="location">Cidade ou região</label>
+              <input type="text" id="location" placeholder="ex: São Paulo, Brasil" value="Brasil">
+              <div class="pro-only">
               <label>Salário mínimo (R$/mês, opcional)</label>
               <input type="number" id="salary_min" placeholder="ex: 5000" min="0" step="500">
               <label>Salário máximo (R$/mês, opcional)</label>
               <input type="number" id="salary_max" placeholder="ex: 15000" min="0" step="500">
+              </div>
             </details>
 
-            <details class="fblock" open>
+            <details class="fblock pro-only">
               <summary>Refinar (opcional)</summary>
               <label>Modelo de trabalho</label>
               <div class="chips" id="workplace">
@@ -186,58 +201,61 @@
               </select>
             </details>
 
-            <details class="fblock" open>
-              <summary>Fontes e volume</summary>
-              <div class="label-row">
+            <details class="fblock" open id="sourcesBlock">
+              <summary id="sourcesBlockTitle">Onde buscar</summary>
+              <div class="label-row pro-only">
                 <label>Fontes</label>
                 <span class="link" onclick="toggleAllSources()">selecionar todas</span>
               </div>
               <div class="chips" id="sources">
                 <label class="chip"><input type="checkbox" value="gupy" checked> Gupy</label>
                 <label class="chip"><input type="checkbox" value="indeed" checked> Indeed</label>
-                <label class="chip"><input type="checkbox" value="greenhouse"> Greenhouse</label>
-                <label class="chip"><input type="checkbox" value="remotive" checked> Remotive</label>
-                <label class="chip"><input type="checkbox" value="remoteok" checked> RemoteOK</label>
-                <label class="chip warn"><input type="checkbox" value="infojobs"> InfoJobs *</label>
-                <label class="chip warn"><input type="checkbox" value="linkedin"> LinkedIn *</label>
+                <label class="chip pro-only"><input type="checkbox" value="greenhouse"> Greenhouse</label>
+                <label class="chip pro-only"><input type="checkbox" value="remotive" checked> Remotive</label>
+                <label class="chip pro-only"><input type="checkbox" value="remoteok" checked> RemoteOK</label>
+                <label class="chip"><input type="checkbox" value="infojobs"> InfoJobs</label>
+                <label class="chip pro-only warn"><input type="checkbox" value="linkedin"> LinkedIn *</label>
               </div>
-              <p class="hint">* InfoJobs e LinkedIn abrem navegador (podem pedir login)</p>
+              <p class="hint pro-only">* InfoJobs e LinkedIn abrem navegador (podem pedir login)</p>
+              <div class="pro-only">
               <label>Máx. por fonte</label>
               <input type="number" id="limit" value="40" min="5" max="100">
               <label>Máx. exibidas no total</label>
               <input type="number" id="global_cap" value="" min="10" max="1000" placeholder="auto = por fonte × fontes">
               <p class="hint">Ex.: 50 por fonte × 7 fontes → até 350 vagas. Filtre por fonte na aba Resultados.</p>
-              <label class="chip broad-toggle"><input type="checkbox" id="broad" checked> Busca ampla — traz o máximo; filtros refinados só reordenam</label>
-              <label class="chip"><input type="checkbox" id="only_new"> Só vagas novas (desde última busca)</label>
-              <label class="chip"><input type="checkbox" id="semantic" checked> Match profundo (semântico — mais lento)</label>
-              <label class="chip"><input type="checkbox" id="no_cache"> Buscar sem cache (dados frescos)</label>
+              </div>
+              <input type="hidden" id="limitSimple" value="50">
+              <label class="chip broad-toggle"><input type="checkbox" id="broad" checked> <span id="broadLabel">Buscar o máximo de vagas</span></label>
+              <label class="chip pro-only"><input type="checkbox" id="only_new"> Só vagas novas (desde última busca)</label>
+              <label class="chip pro-only"><input type="checkbox" id="semantic" checked> Match profundo (semântico — mais lento)</label>
+              <label class="chip pro-only"><input type="checkbox" id="no_cache"> Buscar sem cache (dados frescos)</label>
             </details>
 
             <div class="search-actions">
-              <button class="go" id="go" onclick="search()">Buscar vagas</button>
+              <button class="go" id="go" onclick="search()">Buscar vagas agora</button>
             </div>
 
-            <div class="label-row" style="margin-top:18px">
+            <div class="label-row pro-only" style="margin-top:18px">
               <label style="margin:0">Buscas salvas</label>
               <span class="link" onclick="saveCurrentSearch()">+ salvar</span>
             </div>
-            <div class="chips" id="savedSearches"></div>
+            <div class="chips pro-only" id="savedSearches"></div>
 
-            <div class="label-row" style="margin-top:18px">
+            <div class="label-row pro-only" style="margin-top:18px">
               <label style="margin:0">Alertas de vagas</label>
               <span class="link" onclick="saveAlert()">+ criar alerta</span>
             </div>
-            <div class="chips" id="alertsList"></div>
-            <p class="hint">Alertas rodam automaticamente a cada 30 min (web e desktop). Use 🔕 para pausar.</p>
+            <div class="chips pro-only" id="alertsList"></div>
+            <p class="hint pro-only">Alertas rodam automaticamente a cada 30 min (web e desktop). Use 🔕 para pausar.</p>
           </div>
         </div>
 
         <div id="resultsTab" class="tab-pane">
           <div id="results">
             <div class="empty">
-              <div class="big">✈️</div>
-              Configure os filtros na aba <b>Buscar</b> e clique em <b>Buscar vagas</b>.
-              <p class="muted" style="margin-top:10px;font-size:13px">Vagas ranqueadas por compatibilidade — você escolhe onde aplicar.</p>
+              <div class="big">🔎</div>
+              <span id="resultsEmptyText">Escolha a área na aba <b>Buscar</b> e clique em <b>Buscar vagas agora</b>.</span>
+              <p class="muted" style="margin-top:10px;font-size:13px" id="resultsEmptyHint">Mostramos as vagas que mais combinam com seu currículo.</p>
             </div>
           </div>
         </div>
@@ -291,14 +309,14 @@
 </div>
 
 <dialog id="onboardModal" class="onboard-modal">
-  <div class="onboard-hero">✈️</div>
-  <h2>Bem-vindo ao HirePilot</h2>
-  <ol class="onboard-steps">
+  <div class="onboard-hero">👋</div>
+  <h2 id="onboardTitle">Bem-vindo ao HirePilot</h2>
+  <ol class="onboard-steps" id="onboardSteps">
     <li><b>Envie seu currículo</b> — PDF ou Word</li>
-    <li><b>Escolha área e filtros</b> — ou deixe a busca ampla</li>
-    <li><b>Busque e aplique</b> — veja o match % de cada vaga</li>
+    <li><b>Diga o tipo de vaga</b> — loja, escritório, fábrica…</li>
+    <li><b>Busque e candidate-se</b> — veja o que combina com você</li>
   </ol>
-  <button type="button" class="btn primary go" onclick="finishOnboard()">Começar agora</button>
+  <button type="button" class="btn primary go" onclick="finishOnboard()">Começar</button>
 </dialog>
 
 <footer class="app-footer" id="appFooter">

@@ -236,6 +236,7 @@ def job_row(
         "skills": m.skill_overlap[:8],
         "reasons": m.reasons,
         "reasons_short": "; ".join(m.reasons[:2]),
+        "cv_tips": report.suggestions[:3],
         "source": source,
         "posted_at": format_posted(m.job.posted_at),
         "posted_sort": posted_sort_key(m.job.posted_at),
