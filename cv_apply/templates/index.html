@@ -14,6 +14,7 @@
   </div>
   <span class="sub">— suba seu currículo, veja sua nota ATS e encontre vagas que combinam</span>
   <span class="spacer"></span>
+  <button id="themeBtn" class="btn small ghost" onclick="toggleTheme()" aria-label="Alternar tema">☀️</button>
   <button id="resetBtn" class="btn small ghost hidden" onclick="resetProfile()">Trocar currículo</button>
 </header>
 
@@ -107,6 +108,12 @@
         <label>Máx. por fonte</label>
         <input type="number" id="limit" value="20" min="1" max="100">
         <button class="go" id="go" onclick="search()">Buscar vagas</button>
+
+        <div class="label-row" style="margin-top:18px">
+          <label style="margin:0">Buscas salvas</label>
+          <span class="link" onclick="saveCurrentSearch()">+ salvar atual</span>
+        </div>
+        <div class="chips" id="savedSearches"></div>
       </div>
 
       <div id="results">

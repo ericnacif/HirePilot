@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -11,16 +10,16 @@ from pydantic import BaseModel, Field
 class CandidateProfile(BaseModel):
     """Perfil extraído do currículo."""
 
-    name: Optional[str] = None
-    email: Optional[str] = None
-    phone: Optional[str] = None
-    headline: Optional[str] = None
-    summary: Optional[str] = None
+    name: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    headline: str | None = None
+    summary: str | None = None
     skills: list[str] = Field(default_factory=list)
     job_titles: list[str] = Field(default_factory=list)
-    seniority: Optional[str] = None
+    seniority: str | None = None
     locations: list[str] = Field(default_factory=list)
-    years_experience: Optional[int] = None
+    years_experience: int | None = None
     raw_text: str = ""
 
     def profile_text(self) -> str:
@@ -47,7 +46,7 @@ class JobPosting(BaseModel):
     url: str
     description: str = ""
     easy_apply: bool = False
-    posted_at: Optional[str] = None
+    posted_at: str | None = None
     scraped_at: datetime = Field(default_factory=datetime.now)
 
 

@@ -11,9 +11,9 @@ import hashlib
 import logging
 import re
 import unicodedata
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
-from typing import Callable, Optional
 
 import httpx
 
@@ -43,7 +43,7 @@ def _strip_html(text: str) -> str:
     return text.strip()
 
 
-def _parse_date(value) -> Optional[datetime]:
+def _parse_date(value) -> datetime | None:
     if not value:
         return None
     if isinstance(value, (int, float)):
@@ -52,11 +52,10 @@ def _parse_date(value) -> Optional[datetime]:
         except Exception:
             return None
     text = str(value).strip().replace("Z", "+00:00")
-    for fmt in (None,):
-        try:
-            return datetime.fromisoformat(text)
-        except Exception:
-            pass
+    try:
+        return datetime.fromisoformat(text)
+    except ValueError:
+        pass
     for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%Y/%m/%d %H:%M:%S"):
         try:
             return datetime.strptime(str(value)[:19], fmt)
@@ -384,7 +383,7 @@ BROWSER_SOURCES = {"linkedin", "infojobs"}
 def run_sources(
     settings: Settings,
     max_jobs: int,
-    on_log: Optional[Callable[[str], None]] = None,
+    on_log: Callable[[str], None] | None = None,
 ) -> dict[str, list[JobPosting]]:
     """Executa as fontes habilitadas e retorna {fonte: [vagas]}.
 

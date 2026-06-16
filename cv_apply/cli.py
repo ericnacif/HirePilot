@@ -166,6 +166,8 @@ def cmd_rank(args: argparse.Namespace) -> int:
     matches = matches[:limit]
     storage.save_rankings(matches)
     out_path = storage.export_rankings_json(matches)
+    if getattr(args, "csv", False):
+        csv_path = storage.export_rankings_csv(matches)
 
     table = Table(title=f"Top {len(matches)} vagas (score >= {min_score})")
     table.add_column("#", style="dim")
@@ -186,6 +188,8 @@ def cmd_rank(args: argparse.Namespace) -> int:
 
     console.print(table)
     console.print(f"\n[green]Ranking exportado:[/green] {out_path}")
+    if getattr(args, "csv", False):
+        console.print(f"[green]CSV exportado:[/green] {csv_path}")
     return 0
 
 
@@ -429,6 +433,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_rank = sub.add_parser("rank", help="Ranquear vagas por compatibilidade")
     p_rank.add_argument("--min-score", type=float, help="Score mínimo (0-100)")
     p_rank.add_argument("--limit", type=int, help="Top N vagas")
+    p_rank.add_argument("--csv", action="store_true", help="Exportar também em CSV")
     p_rank.set_defaults(func=cmd_rank)
 
     p_apply = sub.add_parser("apply", help="Preparar candidaturas (modo assistido)")

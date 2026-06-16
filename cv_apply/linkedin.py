@@ -7,7 +7,7 @@ import logging
 import random
 import re
 import time
-from typing import Callable, Optional
+from collections.abc import Callable
 from urllib.parse import urlencode
 
 from playwright.sync_api import BrowserContext, Page, sync_playwright
@@ -38,10 +38,10 @@ class LinkedInClient:
         self.settings = settings
         self.settings.browser_data_dir.mkdir(parents=True, exist_ok=True)
         self._playwright = None
-        self._context: Optional[BrowserContext] = None
-        self._page: Optional[Page] = None
+        self._context: BrowserContext | None = None
+        self._page: Page | None = None
 
-    def __enter__(self) -> "LinkedInClient":
+    def __enter__(self) -> LinkedInClient:
         self.start()
         return self
 
@@ -279,7 +279,7 @@ class LinkedInClient:
         self,
         job: JobPosting,
         cover_letter: str = "",
-        on_step: Optional[Callable[[str], None]] = None,
+        on_step: Callable[[str], None] | None = None,
     ) -> bool:
         """
         Abre Easy Apply e pré-preenche campos quando possível.
@@ -327,7 +327,7 @@ class LinkedInClient:
     def _fill_easy_apply_steps(
         self,
         cover_letter: str,
-        on_step: Optional[Callable[[str], None]] = None,
+        on_step: Callable[[str], None] | None = None,
     ) -> None:
         max_steps = 8
         for step in range(max_steps):

@@ -76,7 +76,7 @@ class SearchFilters:
     date_posted: str = "qualquer"
 
     @classmethod
-    def from_settings(cls, settings) -> "SearchFilters":
+    def from_settings(cls, settings) -> SearchFilters:
         return cls(
             keywords=settings.search_keywords,
             location=settings.search_location,

@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+import csv
 import json
 import sqlite3
 from datetime import date, datetime
 from pathlib import Path
-from typing import Optional
 
 from cv_apply.profile import CandidateProfile, JobMatch, JobPosting
 
@@ -61,7 +61,7 @@ class Storage:
             profile.model_dump_json(indent=2), encoding="utf-8"
         )
 
-    def load_profile(self) -> Optional[CandidateProfile]:
+    def load_profile(self) -> CandidateProfile | None:
         if not self.profile_path.exists():
             return None
         data = json.loads(self.profile_path.read_text(encoding="utf-8"))
@@ -203,7 +203,7 @@ class Storage:
             ).fetchone()
         return row[0] if row else 0
 
-    def export_rankings_json(self, matches: list[JobMatch], path: Optional[Path] = None) -> Path:
+    def export_rankings_json(self, matches: list[JobMatch], path: Path | None = None) -> Path:
         out = path or (self.data_dir / "rankings.json")
         payload = [
             {
@@ -219,4 +219,24 @@ class Storage:
             for m in matches
         ]
         out.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        return out
+
+    def export_rankings_csv(self, matches: list[JobMatch], path: Path | None = None) -> Path:
+        out = path or (self.data_dir / "rankings.csv")
+        with out.open("w", encoding="utf-8-sig", newline="") as fh:
+            writer = csv.writer(fh)
+            writer.writerow(
+                ["score", "title", "company", "location", "easy_apply", "skills", "reasons", "url"]
+            )
+            for m in matches:
+                writer.writerow([
+                    f"{m.score:.1f}",
+                    m.job.title,
+                    m.job.company,
+                    m.job.location,
+                    "sim" if m.job.easy_apply else "nao",
+                    ", ".join(m.skill_overlap),
+                    "; ".join(m.reasons),
+                    m.job.url,
+                ])
         return out

@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Optional
 
 import httpx
 from jinja2 import Template
@@ -85,7 +84,7 @@ def detect_language(text: str) -> str:
     return "en" if en > pt else "pt"
 
 
-def resolve_language(job: JobPosting, settings: Settings, override: Optional[str] = None) -> str:
+def resolve_language(job: JobPosting, settings: Settings, override: str | None = None) -> str:
     """Decide o idioma da carta: override > config > detecção automática."""
     lang = (override or getattr(settings, "cover_letter_lang", "auto") or "auto").lower()
     if lang in ("pt", "en"):
@@ -107,7 +106,7 @@ def _matched_skills_for_job(profile: CandidateProfile, job: JobPosting) -> list[
 def generate_cover_letter_template(
     profile: CandidateProfile,
     job: JobPosting,
-    template_str: Optional[str] = None,
+    template_str: str | None = None,
     lang: str = "pt",
 ) -> str:
     matched = _matched_skills_for_job(profile, job)
@@ -218,7 +217,7 @@ def generate_cover_letter(
     profile: CandidateProfile,
     job: JobPosting,
     settings: Settings,
-    lang: Optional[str] = None,
+    lang: str | None = None,
 ) -> str:
     """Gera carta por template ou LLM configurado, no idioma resolvido.
 

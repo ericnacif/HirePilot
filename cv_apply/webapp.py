@@ -8,19 +8,23 @@ O estado por sessão é guardado em memória com expiração automática
 
 from __future__ import annotations
 
+import csv
+import io
+import json
 import logging
 import os
 import threading
 import time
 import uuid
 import webbrowser
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from functools import wraps
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any
 
-from flask import Flask, jsonify, render_template, request, session
+from flask import Flask, Response, jsonify, render_template, request, session
 from werkzeug.utils import secure_filename
 
 from cv_apply.ats import analyze_ats, analyze_resume_format
@@ -49,11 +53,12 @@ MAX_SESSIONS = 200
 # --------------------------------------------------------------------------- #
 @dataclass
 class SessionData:
-    profile: Optional[CandidateProfile] = None
-    resume_path: Optional[Path] = None
+    profile: CandidateProfile | None = None
+    resume_path: Path | None = None
     jobs: dict[str, JobPosting] = field(default_factory=dict)
     source_by_job: dict[str, str] = field(default_factory=dict)
     applied: set[str] = field(default_factory=set)
+    last_results: list[dict] = field(default_factory=list)
     last_seen: float = field(default_factory=time.time)
 
 
@@ -91,7 +96,7 @@ class SessionStore:
                 if entry:
                     _delete_resume_file(entry.resume_path)
 
-    def get(self, sid: str, create: bool = True) -> Optional[SessionData]:
+    def get(self, sid: str, create: bool = True) -> SessionData | None:
         with self._lock:
             self._evict_locked()
             entry = self._data.get(sid)
@@ -125,7 +130,7 @@ def _sid() -> str:
     return session["sid"]
 
 
-def _format_posted(value: Optional[str]) -> Optional[str]:
+def _format_posted(value: str | None) -> str | None:
     """Converte data de publicação em rótulo amigável (ex.: 'há 4 dias')."""
     if not value:
         return None
@@ -297,6 +302,7 @@ def api_search(sess: SessionData):
             "description": desc,
             "applied": m.job.id in sess.applied,
         })
+    sess.last_results = out
     return jsonify({"jobs": out})
 
 
@@ -326,6 +332,39 @@ def api_cover(sess: SessionData, job: JobPosting, data: dict):
     lang = (data.get("lang") or "").lower() or None
     letter = generate_cover_letter(sess.profile, job, get_settings(), lang=lang)
     return jsonify({"letter": letter})
+
+
+_EXPORT_COLUMNS = [
+    "score", "ats", "title", "company", "location", "source",
+    "posted_at", "easy_apply", "applied", "url",
+]
+
+
+@app.route("/api/export")
+def api_export():
+    """Exporta as últimas vagas buscadas em CSV ou JSON."""
+    sess = store.get(_sid())
+    rows = sess.last_results if sess else []
+    fmt = (request.args.get("format") or "csv").lower()
+
+    if fmt == "json":
+        payload = json.dumps(rows, ensure_ascii=False, indent=2)
+        return Response(
+            payload,
+            mimetype="application/json",
+            headers={"Content-Disposition": "attachment; filename=vagas.json"},
+        )
+
+    buffer = io.StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=_EXPORT_COLUMNS, extrasaction="ignore")
+    writer.writeheader()
+    for row in rows:
+        writer.writerow(row)
+    return Response(
+        buffer.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=vagas.csv"},
+    )
 
 
 @app.route("/api/profile", methods=["POST"])

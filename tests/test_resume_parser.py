@@ -2,6 +2,7 @@
 
 from cv_apply.resume_parser import (
     extract_email,
+    extract_locations,
     extract_name,
     extract_phone,
     extract_seniority,
@@ -45,3 +46,11 @@ def test_extract_years_experience():
     assert extract_years_experience("Tenho 5 anos de experiência") == 5
     assert extract_years_experience("3 years of experience") == 3
     assert extract_years_experience("sem números") is None
+
+
+def test_extract_locations_nacional_e_internacional():
+    locs = extract_locations("Baseado em São Paulo, aberto a vagas em London e Lisbon. Remote ok.")
+    assert "São Paulo" in locs
+    assert "London" in locs
+    assert "Lisbon" in locs
+    assert "Remote" in locs

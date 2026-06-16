@@ -106,7 +106,6 @@ def extract_seniority(text: str) -> str | None:
 
 
 def extract_job_titles(text: str) -> list[str]:
-    normalized = _normalize(text)
     titles: list[str] = []
     lines = text.splitlines()
     for line in lines:
@@ -131,14 +130,32 @@ def extract_years_experience(text: str) -> int | None:
     return None
 
 
+LOCATION_TERMS = [
+    # Brasil — cidades
+    "são paulo", "rio de janeiro", "belo horizonte", "curitiba", "porto alegre",
+    "brasília", "salvador", "recife", "fortaleza", "campinas", "florianópolis",
+    # Brasil / país
+    "brasil", "brazil",
+    # Europa
+    "lisboa", "lisbon", "porto", "madrid", "barcelona", "london", "londres",
+    "manchester", "dublin", "berlin", "berlim", "munich", "munique", "amsterdam",
+    "amsterdã", "paris", "rome", "roma", "milan", "milão", "warsaw", "varsóvia",
+    "portugal", "spain", "espanha", "germany", "alemanha", "france", "frança",
+    "netherlands", "holanda", "ireland", "irlanda", "united kingdom", "uk",
+    "reino unido", "italy", "itália", "poland", "polônia", "europe", "europa",
+    # Américas / outros
+    "new york", "nova york", "san francisco", "toronto", "vancouver",
+    "buenos aires", "mexico city", "cidade do méxico", "united states", "usa",
+    "eua", "estados unidos", "canada", "canadá", "argentina", "mexico", "méxico",
+    "latam", "emea",
+    # Modelos de trabalho
+    "remoto", "remote", "híbrido", "hibrido", "hybrid", "anywhere", "worldwide",
+]
+
+
 def extract_locations(text: str) -> list[str]:
-    cities = [
-        "são paulo", "rio de janeiro", "belo horizonte", "curitiba", "porto alegre",
-        "brasília", "salvador", "recife", "fortaleza", "campinas", "florianópolis",
-        "brasil", "brazil", "remoto", "remote", "híbrido", "hibrido", "hybrid",
-    ]
     normalized = _normalize(text)
-    found = [c.title() for c in cities if c in normalized]
+    found = [term.title() for term in LOCATION_TERMS if term in normalized]
     return list(dict.fromkeys(found))
 
 

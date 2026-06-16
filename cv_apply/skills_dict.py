@@ -104,12 +104,12 @@ def skill_pattern(skill: str) -> str:
 
 
 @lru_cache(maxsize=2048)
-def compile_skill_regex(skill: str) -> "re.Pattern[str]":
+def compile_skill_regex(skill: str) -> re.Pattern[str]:
     return re.compile(skill_pattern(skill))
 
 
 # Pré-compilado uma vez: usado em extração de currículo, matching e ATS.
-SKILL_REGEXES: list[tuple[str, "re.Pattern[str]"]] = [
+SKILL_REGEXES: list[tuple[str, re.Pattern[str]]] = [
     (skill, compile_skill_regex(skill)) for skill in SKILLS_DICTIONARY
 ]
 

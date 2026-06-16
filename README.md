@@ -1,6 +1,13 @@
-# Auto Apply (modo assistido)
+# VagaMatch
 
-Aplicação Python que lê seu currículo, busca vagas em **várias plataformas** (LinkedIn, Gupy, InfoJobs, Remotive, RemoteOK), ranqueia por compatibilidade com matching semântico **gratuito/local** e prepara candidaturas — **você confirma o envio manualmente**.
+[![CI](https://github.com/ericnacif/vagamatch/actions/workflows/ci.yml/badge.svg)](https://github.com/ericnacif/vagamatch/actions/workflows/ci.yml)
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![Ruff](https://img.shields.io/badge/lint-ruff-261230)](https://github.com/astral-sh/ruff)
+
+Aplicação Python que lê seu currículo, busca vagas em **várias plataformas** (LinkedIn, Gupy, InfoJobs, Remotive, RemoteOK), ranqueia por compatibilidade com matching semântico **gratuito/local**, analisa compatibilidade **ATS**, gera **carta de apresentação** (PT/EN) e prepara candidaturas — **você confirma o envio manualmente**.
+
+Tem uma **interface web reutilizável** (qualquer pessoa sobe o próprio currículo) e uma **CLI** completa.
 
 ## Plataformas suportadas
 
@@ -35,8 +42,9 @@ Use por sua conta e risco. Não há garantia contra bloqueio de conta.
 ## Instalação
 
 ```bash
-# Clone ou entre na pasta do projeto
-cd eric
+# Clone o repositório
+git clone https://github.com/ericnacif/vagamatch.git
+cd vagamatch
 
 # Ambiente virtual (recomendado)
 python -m venv .venv
@@ -45,8 +53,23 @@ python -m venv .venv
 # Linux/macOS
 source .venv/bin/activate
 
+# Opção A: instalar como pacote (cria o comando `vagamatch`)
+pip install -e .
+# Opção B: só as dependências
 pip install -r requirements.txt
+
+# Navegador para LinkedIn/InfoJobs (opcional se usar só as APIs)
 playwright install chromium
+```
+
+Com a instalação via `pip install -e .`, você pode usar o comando `vagamatch` no lugar de `python -m cv_apply` (ex.: `vagamatch web`).
+
+### Desenvolvimento
+
+```bash
+pip install -e ".[dev]"   # inclui pytest e ruff
+pytest                     # roda os testes
+ruff check .               # lint
 ```
 
 ## Configuração

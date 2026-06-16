@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 import os
 import re
-from typing import Optional
 
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
@@ -17,7 +16,7 @@ from cv_apply.skills_dict import compile_skill_regex
 logger = logging.getLogger(__name__)
 
 _semantic_model = None
-_semantic_available: Optional[bool] = None
+_semantic_available: bool | None = None
 
 
 def _get_semantic_model():
@@ -181,7 +180,7 @@ def match_job(
     profile: CandidateProfile,
     job: JobPosting,
     use_semantic: bool = True,
-    semantic_override: Optional[float] = None,
+    semantic_override: float | None = None,
 ) -> JobMatch:
     """Calcula score 0-100 e motivos para uma vaga.
 
@@ -265,7 +264,7 @@ def rank_jobs(
     if not jobs:
         return []
 
-    semantics: list[Optional[float]] = [None] * len(jobs)
+    semantics: list[float | None] = [None] * len(jobs)
     if use_semantic:
         profile_text = profile.profile_text()
         job_texts = [f"{j.title} {j.company} {j.description}" for j in jobs]
@@ -273,7 +272,7 @@ def rank_jobs(
 
     matches = [
         match_job(profile, job, use_semantic=use_semantic, semantic_override=sem)
-        for job, sem in zip(jobs, semantics)
+        for job, sem in zip(jobs, semantics, strict=False)
     ]
     matches = [m for m in matches if m.score >= min_score]
     matches.sort(key=lambda m: m.score, reverse=True)

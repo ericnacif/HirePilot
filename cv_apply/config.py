@@ -85,7 +85,7 @@ class Settings(BaseModel):
     )
     data_dir: Path = Field(default_factory=lambda: Path(os.getenv("DATA_DIR", "data")))
 
-    def resolve_paths(self) -> "Settings":
+    def resolve_paths(self) -> Settings:
         """Resolve caminhos relativos ao diretório do projeto."""
         if not self.resume_path.is_absolute():
             self.resume_path = PROJECT_ROOT / self.resume_path

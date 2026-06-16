@@ -1,0 +1,68 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vagamatch"
+version = "0.1.0"
+description = "Assistente local de busca e candidatura a vagas com análise ATS, matching semântico e interface web."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Eric Nacif" }]
+keywords = ["jobs", "ats", "resume", "linkedin", "matching", "nlp"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Office/Business",
+]
+dependencies = [
+    "playwright>=1.40.0",
+    "pdfplumber>=0.10.0",
+    "python-docx>=1.1.0",
+    "sentence-transformers>=2.2.0",
+    "scikit-learn>=1.3.0",
+    "rich>=13.7.0",
+    "pydantic>=2.5.0",
+    "python-dotenv>=1.0.0",
+    "jinja2>=3.1.0",
+    "httpx>=0.25.0",
+    "flask>=3.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "ruff>=0.6.0",
+]
+
+[project.urls]
+Repository = "https://github.com/ericnacif/vagamatch"
+
+[project.scripts]
+vagamatch = "cv_apply.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["cv_apply*"]
+
+[tool.setuptools.package-data]
+cv_apply = ["templates/*.html", "static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "W"]
+ignore = [
+    "E501",  # linhas longas (HTML/CSS embutido e strings de UI)
+    "B008",  # chamadas em defaults (Flask/argparse patterns)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E402"]
