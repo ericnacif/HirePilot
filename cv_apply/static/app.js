@@ -99,7 +99,7 @@ function toggleTheme() {
   lsSet(THEME_KEY, next);
   applyTheme(next);
 }
-applyTheme(lsGet(THEME_KEY, "dark"));
+applyTheme(lsGet(THEME_KEY, "light"));
 
 /* ---------- abas Buscar / Vagas ---------- */
 function switchTab(name) {

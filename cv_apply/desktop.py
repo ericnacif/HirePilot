@@ -31,15 +31,16 @@ _SPLASH_HTML = """<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   body{height:100vh;display:flex;align-items:center;justify-content:center;
-    font-family:Segoe UI,system-ui,sans-serif;background:linear-gradient(145deg,#0f172a,#1e293b);color:#e2e8f0}
+    font-family:Segoe UI,system-ui,sans-serif;background:#F6F8FC;color:#1A2030}
   .box{text-align:center;padding:28px}
-  .logo{width:56px;height:56px;margin:0 auto 16px;border-radius:50%;
-    background:linear-gradient(135deg,#2563eb,#7c3aed);display:flex;align-items:center;justify-content:center;
+  .logo{width:58px;height:58px;margin:0 auto 16px;border-radius:16px;
+    background:linear-gradient(145deg,#fff,#F6F8FC);border:1px solid rgba(93,140,255,.2);
+    box-shadow:0 10px 28px rgba(93,140,255,.18);display:flex;align-items:center;justify-content:center;
     font-size:28px;animation:pulse 1.4s ease-in-out infinite}
-  h1{font-size:22px;font-weight:700;margin-bottom:6px}
-  p{font-size:13px;color:#94a3b8;margin-bottom:18px}
-  .bar{width:200px;height:5px;border-radius:99px;background:rgba(255,255,255,.12);margin:0 auto;overflow:hidden}
-  .bar i{display:block;height:100%;width:40%;background:linear-gradient(90deg,#2563eb,#7c3aed);
+  h1{font-size:22px;font-weight:700;margin-bottom:6px;color:#1A2030}
+  p{font-size:13px;color:#64748b;margin-bottom:18px}
+  .bar{width:200px;height:5px;border-radius:99px;background:rgba(93,140,255,.15);margin:0 auto;overflow:hidden}
+  .bar i{display:block;height:100%;width:40%;background:linear-gradient(90deg,#5D8CFF,#8FB0FF);
     animation:slide 1s ease-in-out infinite}
   @keyframes slide{0%{transform:translateX(-100%)}100%{transform:translateX(350%)}}
   @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
