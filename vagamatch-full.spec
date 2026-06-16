@@ -1,12 +1,11 @@
 # -*- mode: python ; coding: utf-8 -*-
-# Gera o executável Windows: build_exe.bat
-# App nativo (janela própria, sem console) via pywebview + WebView2.
+# HirePilot Completo — inclui Playwright (LinkedIn/InfoJobs na 1ª execução).
 
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 block_cipher = None
 
-hiddenimports = collect_submodules("cv_apply") + collect_submodules("webview") + [
+hiddenimports = collect_submodules("cv_apply") + collect_submodules("webview") + collect_submodules("playwright") + [
     "flask",
     "jinja2",
     "werkzeug",
@@ -20,10 +19,11 @@ hiddenimports = collect_submodules("cv_apply") + collect_submodules("webview") +
     "webview.platforms.winforms",
     "webview.platforms.edgechromium",
     "clr",
+    "playwright",
+    "playwright.sync_api",
 ]
 
 excludes = [
-    "playwright",
     "torch",
     "sentence_transformers",
     "transformers",
@@ -47,7 +47,7 @@ a = Analysis(
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=[],
+    runtime_hooks=["cv_apply/runtime_hook_full.py"],
     excludes=excludes,
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
@@ -64,7 +64,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name="HirePilot",
+    name="HirePilot-Full",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

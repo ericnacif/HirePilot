@@ -22,25 +22,57 @@ jobs:
           cache: pip
 
       - name: Install build dependencies
+        shell: pwsh
         run: |
           python -m pip install --upgrade pip
-          pip install pyinstaller
+          pip install pyinstaller pillow
           pip install -r requirements-build.txt
+          pip install -r requirements-build-full.txt
           pip install -e .
+          python scripts/generate_icon.py
 
-      - name: Build HirePilot.exe
+      - name: Build HirePilot (Leve)
         run: python -m PyInstaller vagamatch.spec --noconfirm
 
-      - name: Upload artifact (always)
+      - name: Build HirePilot-Full
+        run: python -m PyInstaller vagamatch-full.spec --noconfirm
+
+      - name: Prepare portable ZIP
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist/portable | Out-Null
+          Copy-Item dist/HirePilot.exe dist/portable/
+          Copy-Item LEIA-ME.txt dist/portable/
+          Compress-Archive -Path dist/portable/* -DestinationPath dist/HirePilot-portable.zip -Force
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $v = "${{ github.ref_name }}" -replace '^v',''
+          if (-not $v -or $v -eq '${{ github.ref_name }}') { $v = '1.0.0' }
+          (Get-Content installer/hirepilot.iss) -replace '#define MyAppVersion "1.0.0"', "#define MyAppVersion `"$v`"" | Set-Content installer/hirepilot-built.iss
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" installer/hirepilot-built.iss
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: HirePilot-Windows
-          path: dist/HirePilot.exe
-          if-no-files-found: error
+          name: HirePilot-Windows-all
+          path: |
+            dist/HirePilot.exe
+            dist/HirePilot-Full.exe
+            dist/HirePilot-portable.zip
+            dist/HirePilot-Setup.exe
 
       - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/HirePilot.exe
+          files: |
+            dist/HirePilot.exe
+            dist/HirePilot-Full.exe
+            dist/HirePilot-portable.zip
+            dist/HirePilot-Setup.exe
           body_path: INSTALAR.md

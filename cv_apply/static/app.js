@@ -1170,3 +1170,81 @@ function scrollToResults() {
   panel.addEventListener("input", updateFilterCount);
   panel.addEventListener("change", updateFilterCount);
 })();
+
+/* ---------- versão, atualização, onboarding ---------- */
+const ONBOARD_KEY = "vagamatch.onboarded";
+const UPDATE_DISMISS_KEY = "vagamatch.updateDismiss";
+let APP_VERSION = "0.0.0";
+
+function finishOnboard() {
+  lsSet(ONBOARD_KEY, true);
+  const d = $("onboardModal");
+  if (d) d.close();
+}
+
+function maybeShowOnboard() {
+  if (lsGet(ONBOARD_KEY, false)) return;
+  const d = $("onboardModal");
+  if (d && d.showModal) d.showModal();
+}
+
+function parseSemver(v) {
+  return String(v || "0").replace(/^v/i, "").split(".").map(n => parseInt(n, 10) || 0);
+}
+
+function semverGt(a, b) {
+  const av = parseSemver(a);
+  const bv = parseSemver(b);
+  for (let i = 0; i < 3; i++) {
+    if (av[i] !== bv[i]) return av[i] > bv[i];
+  }
+  return false;
+}
+
+function dismissUpdate() {
+  const b = $("updateBanner");
+  if (b) b.classList.add("hidden");
+  lsSet(UPDATE_DISMISS_KEY, APP_VERSION);
+}
+
+function showUpdateBanner(url, ver) {
+  if (lsGet(UPDATE_DISMISS_KEY, "") === ver) return;
+  const b = $("updateBanner");
+  if (!b) return;
+  const el = $("updateVer");
+  if (el) el.textContent = "v" + ver;
+  const link = $("updateLink");
+  if (link) link.href = url;
+  b.classList.remove("hidden");
+}
+
+async function checkForUpdates(fallbackUrl) {
+  try {
+    const r = await fetch("https://api.github.com/repos/ericnacif/vagamatch/releases/latest");
+    if (!r.ok) return;
+    const d = await r.json();
+    const latest = (d.tag_name || "").replace(/^v/i, "");
+    if (latest && semverGt(latest, APP_VERSION)) {
+      showUpdateBanner(d.html_url || fallbackUrl, latest);
+    }
+  } catch (e) { /* offline */ }
+}
+
+async function loadAppMeta() {
+  try {
+    const d = await fetch("/api/meta").then(r => r.json());
+    APP_VERSION = d.version || "0.0.0";
+    const verEl = $("appVersion");
+    if (verEl) verEl.textContent = "v" + APP_VERSION;
+    const varEl = $("appVariant");
+    if (varEl) varEl.textContent = d.variant === "full" ? "· Edição Completa" : "· Edição Leve";
+    checkForUpdates(d.release_url);
+  } catch (e) {
+    checkForUpdates("https://github.com/ericnacif/vagamatch/releases/latest");
+  }
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  loadAppMeta();
+  maybeShowOnboard();
+});

@@ -288,6 +288,28 @@
 
 <div id="toasts"></div>
 
+<div id="updateBanner" class="update-banner hidden" role="status">
+  <span>Nova versão disponível: <b id="updateVer">—</b></span>
+  <a id="updateLink" class="btn small primary" href="#" target="_blank" rel="noopener">Baixar</a>
+  <button type="button" class="btn small ghost" onclick="dismissUpdate()">Depois</button>
+</div>
+
+<dialog id="onboardModal" class="onboard-modal">
+  <div class="onboard-hero">✈️</div>
+  <h2>Bem-vindo ao HirePilot</h2>
+  <ol class="onboard-steps">
+    <li><b>Envie seu currículo</b> — PDF ou Word</li>
+    <li><b>Escolha área e filtros</b> — ou deixe a busca ampla</li>
+    <li><b>Busque e aplique</b> — veja o match % de cada vaga</li>
+  </ol>
+  <button type="button" class="btn primary go" onclick="finishOnboard()">Começar agora</button>
+</dialog>
+
+<footer class="app-footer" id="appFooter">
+  <span>HirePilot <span id="appVersion">v—</span></span>
+  <span id="appVariant" class="muted"></span>
+</footer>
+
 <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 </html>

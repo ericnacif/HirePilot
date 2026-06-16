@@ -27,6 +27,74 @@ _WINDOW_TITLE = "HirePilot"
 _WINDOW_SIZE = (1280, 860)
 _WINDOW_MIN = (960, 640)
 
+_SPLASH_HTML = """<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{height:100vh;display:flex;align-items:center;justify-content:center;
+    font-family:Segoe UI,system-ui,sans-serif;background:linear-gradient(145deg,#0f172a,#1e293b);color:#e2e8f0}
+  .box{text-align:center;padding:28px}
+  .logo{width:56px;height:56px;margin:0 auto 16px;border-radius:50%;
+    background:linear-gradient(135deg,#2563eb,#7c3aed);display:flex;align-items:center;justify-content:center;
+    font-size:28px;animation:pulse 1.4s ease-in-out infinite}
+  h1{font-size:22px;font-weight:700;margin-bottom:6px}
+  p{font-size:13px;color:#94a3b8;margin-bottom:18px}
+  .bar{width:200px;height:5px;border-radius:99px;background:rgba(255,255,255,.12);margin:0 auto;overflow:hidden}
+  .bar i{display:block;height:100%;width:40%;background:linear-gradient(90deg,#2563eb,#7c3aed);
+    animation:slide 1s ease-in-out infinite}
+  @keyframes slide{0%{transform:translateX(-100%)}100%{transform:translateX(350%)}}
+  @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
+</style></head><body><div class="box"><div class="logo">✈</div>
+<h1>HirePilot</h1><p id="msg">Iniciando…</p><div class="bar"><i></i></div></div></body></html>"""
+
+
+def _is_full_variant() -> bool:
+    return os.getenv("HIREPILOT_FULL", "").lower() in {"1", "true", "yes"}
+
+
+def _ensure_desktop_defaults() -> None:
+    os.environ.setdefault("USE_SEMANTIC_MATCHING", "false")
+    if _is_full_variant():
+        os.environ.setdefault(
+            "SEARCH_SOURCES",
+            "gupy,indeed,greenhouse,remotive,remoteok,infojobs,linkedin",
+        )
+    else:
+        os.environ.setdefault("SEARCH_SOURCES", "gupy,indeed,greenhouse,remotive,remoteok")
+
+
+def _bootstrap_playwright_async(data_dir) -> None:
+    """Baixa Chromium uma vez (variante Completa) em segundo plano."""
+    if not _is_full_variant():
+        return
+    browser_dir = data_dir / "playwright-browsers"
+    browser_dir.mkdir(parents=True, exist_ok=True)
+    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(browser_dir)
+
+    def _run() -> None:
+        try:
+            from playwright.sync_api import sync_playwright
+
+            with sync_playwright() as p:
+                path = p.chromium.executable_path
+                if path and os.path.isfile(path):
+                    return
+        except Exception:
+            pass
+        try:
+            import subprocess
+
+            subprocess.run(
+                [sys.executable, "-m", "playwright", "install", "chromium"],
+                check=False,
+                capture_output=True,
+                timeout=600,
+            )
+            logger.info("Playwright Chromium instalado em %s", browser_dir)
+        except Exception as exc:
+            logger.warning("Falha ao instalar Playwright: %s", exc)
+
+    threading.Thread(target=_run, name="playwright-bootstrap", daemon=True).start()
+
 
 def _pick_port(start: int = 59000, end: int = 59100) -> int:
     for port in range(start, end):
@@ -38,11 +106,6 @@ def _pick_port(start: int = 59000, end: int = 59100) -> int:
             except OSError:
                 continue
     return start
-
-
-def _ensure_desktop_defaults() -> None:
-    os.environ.setdefault("USE_SEMANTIC_MATCHING", "false")
-    os.environ.setdefault("SEARCH_SOURCES", "gupy,indeed,remotive,remoteok")
 
 
 def _message_box(title: str, text: str, *, error: bool = True) -> None:
@@ -85,22 +148,32 @@ def _start_flask(host: str, port: int) -> tuple[BaseWSGIServer, threading.Thread
 def _run_native_window(url: str) -> None:
     import webview
 
-    webview.create_window(
+    window = webview.create_window(
         _WINDOW_TITLE,
-        url,
-        width=_WINDOW_SIZE[0],
-        height=_WINDOW_SIZE[1],
+        html=_SPLASH_HTML,
+        width=420,
+        height=300,
+        resizable=True,
         min_size=_WINDOW_MIN,
         text_select=True,
     )
+
+    def _open_app() -> None:
+        time.sleep(0.45)
+        window.load_url(url)
+        try:
+            window.resize(_WINDOW_SIZE[0], _WINDOW_SIZE[1])
+        except Exception:
+            pass
+
     backends: tuple[str | None, ...] = ("edgechromium", "mshtml") if sys.platform.startswith("win") else (None,)
     last_exc: Exception | None = None
     for gui in backends:
         try:
             if gui:
-                webview.start(gui=gui)
+                webview.start(_open_app, gui=gui)
             else:
-                webview.start()
+                webview.start(_open_app)
             return
         except Exception as exc:
             last_exc = exc
@@ -151,6 +224,7 @@ def run_launch() -> None:
     settings = get_settings()
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     _cleanup_stale_uploads(settings.data_dir / "uploads")
+    _bootstrap_playwright_async(settings.data_dir)
 
     host = "127.0.0.1"
     port = _pick_port()

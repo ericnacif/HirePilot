@@ -1,3 +1,4 @@
 # Dependências para gerar o executável Windows (build_exe.bat).
 pyinstaller>=6.0
+pillow>=10.0
 -r requirements-web.txt

@@ -1,0 +1,3 @@
+# Build da variante Completa (Playwright / LinkedIn / InfoJobs).
+-r requirements-build.txt
+playwright>=1.40.0

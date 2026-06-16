@@ -589,6 +589,34 @@ dialog .row { padding: 14px 22px; border-top: 1px solid var(--border); display: 
   .features { flex-direction: column; }
 }
 
+.app-footer {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 40;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  padding: 6px 12px; font-size: 11px; color: var(--muted);
+  background: rgba(15, 23, 42, .82); backdrop-filter: blur(8px);
+  border-top: 1px solid var(--border);
+}
+[data-theme="light"] .app-footer { background: rgba(248, 250, 252, .9); }
+
+.update-banner {
+  position: fixed; bottom: 36px; left: 50%; transform: translateX(-50%); z-index: 50;
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center;
+  padding: 10px 14px; border-radius: 12px; font-size: 13px;
+  background: linear-gradient(135deg, rgba(37,99,235,.95), rgba(124,58,237,.92));
+  color: #fff; box-shadow: 0 8px 32px rgba(0,0,0,.35);
+}
+.update-banner.hidden { display: none; }
+.update-banner .btn.ghost { color: #fff; border-color: rgba(255,255,255,.35); }
+
+.onboard-modal {
+  max-width: 420px; border: 1px solid var(--border); border-radius: 16px;
+  padding: 24px 22px; text-align: center;
+}
+.onboard-hero { font-size: 42px; margin-bottom: 8px; }
+.onboard-modal h2 { font-size: 22px; margin-bottom: 14px; }
+.onboard-steps { text-align: left; margin: 0 0 18px 1.1rem; font-size: 14px; line-height: 1.7; color: var(--muted); }
+.onboard-steps b { color: var(--text); }
+
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: .001ms !important; transition-duration: .001ms !important; }
 }

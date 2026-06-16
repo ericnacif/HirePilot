@@ -5,7 +5,11 @@ Guia para quem **não precisa** instalar Python nem usar terminal.
 ## 1. Baixar
 
 1. Abra a página de **Releases** do projeto no GitHub.
-2. Na versão mais recente, baixe o arquivo **`HirePilot.exe`**.
+2. Escolha um arquivo:
+   - **`HirePilot-Setup.exe`** — instalador (recomendado; cria atalho)
+   - **`HirePilot.exe`** — edição **Leve** (portátil, só APIs)
+   - **`HirePilot-Full.exe`** — edição **Completa** (LinkedIn/InfoJobs; na 1ª vez baixa o navegador)
+   - **`HirePilot-portable.zip`** — Leve + LEIA-ME.txt
 
 ## 2. Abrir no Windows
 
@@ -24,11 +28,13 @@ Guia para quem **não precisa** instalar Python nem usar terminal.
 
 ## O que funciona nesta versão
 
-| Funciona | Não incluído neste .exe |
-|----------|-------------------------|
-| Gupy, Indeed, Remotive, RemoteOK | LinkedIn e InfoJobs (precisam de navegador extra) |
-| Upload, ATS, carta, adaptar CV | Match semântico pesado (usa ranking por palavras-chave) |
-| Favoritos, exportar, alertas | — |
+| Funciona | Observação |
+|----------|------------|
+| Gupy, Indeed, Greenhouse, Remotive, RemoteOK | Edição Leve e Completa |
+| LinkedIn e InfoJobs | Só na edição **Completa** |
+| Instalador com atalho | `HirePilot-Setup.exe` |
+| Upload, ATS, carta, alertas | Todas as edições |
+| Atualização automática | O app avisa quando há versão nova no GitHub |
 
 ## Onde ficam seus dados
 

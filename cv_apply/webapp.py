@@ -490,6 +490,18 @@ def api_job_detail(sess: SessionData):
     })
 
 
+@app.route("/api/meta", methods=["GET"])
+def api_meta():
+    from cv_apply import __version__
+
+    full = os.getenv("HIREPILOT_FULL", "").lower() in {"1", "true", "yes"}
+    return jsonify({
+        "version": __version__,
+        "variant": "full" if full else "lite",
+        "release_url": "https://github.com/ericnacif/vagamatch/releases/latest",
+    })
+
+
 @app.route("/api/state", methods=["GET"])
 def api_state_get():
     sid = _sid()

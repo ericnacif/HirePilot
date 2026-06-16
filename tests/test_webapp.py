@@ -21,6 +21,15 @@ def test_session_store_expira_sessoes():
     assert store.get("abc", create=False) is None
 
 
+def test_api_meta():
+    client = app.test_client()
+    resp = client.get("/api/meta")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["version"]
+    assert data["variant"] in ("lite", "full")
+
+
 def test_index_serve_html():
     client = app.test_client()
     resp = client.get("/")

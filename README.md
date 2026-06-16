@@ -121,17 +121,19 @@ Dados em `%LOCALAPPDATA%\VagaMatch\data\`. Requer **WebView2** (padrão no Windo
 
 ### Distribuir para um amigo (sem código)
 
-1. Publique um release no GitHub (gera o `.exe` automaticamente):
+1. Publique um release (gera `.exe`, instalador e ZIP automaticamente):
 
 ```bash
-git tag v1.0.0
-git push origin v1.0.0
+git tag v1.1.0
+git push origin v1.1.0
 ```
 
-2. Na página **Releases** do repositório, copie o link de download do `HirePilot.exe`.
-3. Envie o link + o arquivo [INSTALAR.md](INSTALAR.md) (instruções para leigo).
+2. Na página **Releases**, envie ao amigo:
+   - **`HirePilot-Setup.exe`** — instalador (melhor opção)
+   - ou **`HirePilot-portable.zip`** — versão portátil
 
-Também dá para gerar localmente com `build_exe.bat` e mandar o `dist\HirePilot.exe` por Drive/WhatsApp.
+Arquivos no release: Leve (`HirePilot.exe`), Completa (`HirePilot-Full.exe`), instalador e ZIP.  
+Instruções para leigos: [INSTALAR.md](INSTALAR.md).
 
 **Testar o modo app sem gerar o .exe:**
 
