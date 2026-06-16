@@ -312,18 +312,26 @@ def apply_keyword_boost(
 
 
 def apply_preference_boost(
-    matches: list[JobMatch], settings, max_boost: float = 18.0
+    matches: list[JobMatch],
+    settings,
+    *,
+    location_filter=None,
+    max_boost: float = 18.0,
 ) -> list[JobMatch]:
     """No modo amplo, sobe vagas que batem com filtros opcionais (sem excluir as demais)."""
+    from cv_apply.locations import location_match_strength, parse_location
     from cv_apply.relevance import detect_seniority_levels
 
+    filt = location_filter or parse_location(getattr(settings, "search_location", "") or "")
     workplace = set(settings.search_workplace or [])
     experience = set(settings.search_experience or []) & {
         "estagio", "junior", "pleno", "senior"
     }
     job_types = set(settings.search_job_type or [])
 
-    if not workplace and not experience and not job_types:
+    has_loc_pref = filt.is_specific or filt.scope.value in ("br", "remote", "foreign")
+
+    if not workplace and not experience and not job_types and not has_loc_pref:
         return matches
 
     remote_kw = ("remoto", "remote", "home office", "home-office", "anywhere")
@@ -334,6 +342,10 @@ def apply_preference_boost(
         text = f"{m.job.title} {m.job.description} {m.job.location}".lower()
         loc = (m.job.location or "").lower()
         boost = 0.0
+
+        loc_strength = location_match_strength(m.job.location or "", filt)
+        if loc_strength > 0.5:
+            boost += min(12.0, (loc_strength - 0.45) * 22)
 
         if workplace:
             if "remoto" in workplace and any(k in loc or k in text for k in remote_kw):

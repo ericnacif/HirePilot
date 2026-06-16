@@ -2,6 +2,19 @@
 
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.2.0] - 2026-06-16
+
+### Adicionado
+- **Modo simples** — linguagem acessível, menos jargão técnico, fluxo enxuto para quem quer emprego rápido
+- **Localização real** — cidade + UF com autocomplete (IBGE), filtro por cidade/estado/Brasil/remoto/exterior
+- API `/api/locations/cities` e base `br_municipios.json` (5.570 municípios)
+- Setores do dia a dia (varejo, operacional, primeiro emprego, etc.)
+
+### Alterado
+- Filtro de local **rigoroso** na cidade (ex.: Manhuaçu, MG não mistura com outras cidades)
+- Indeed busca com cidade e estado formatados para o Brasil
+- Mensagens quando não há vagas na região escolhida
+
 ## [1.1.5] - 2026-06-16
 
 ### Corrigido

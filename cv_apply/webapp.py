@@ -502,6 +502,36 @@ def api_meta():
     })
 
 
+_MUNICIPIOS_CACHE: dict[str, list[str]] | None = None
+
+
+def _load_municipios() -> dict[str, list[str]]:
+    global _MUNICIPIOS_CACHE
+    if _MUNICIPIOS_CACHE is None:
+        path = Path(__file__).resolve().parent / "data" / "br_municipios.json"
+        _MUNICIPIOS_CACHE = json.loads(path.read_text(encoding="utf-8"))
+    return _MUNICIPIOS_CACHE
+
+
+@app.route("/api/locations/cities", methods=["GET"])
+def api_location_cities():
+    from cv_apply.locations import strip_accents
+
+    uf = (request.args.get("state") or "").upper()[:2]
+    q = strip_accents((request.args.get("q") or "").strip())
+    data = _load_municipios()
+    if uf and uf in data:
+        pool = data[uf]
+    else:
+        pool = [c for cities in data.values() for c in cities]
+    if q:
+        pool = [
+            c for c in pool
+            if strip_accents(c).startswith(q) or q in strip_accents(c)
+        ]
+    return jsonify(pool[:30])
+
+
 @app.route("/api/state", methods=["GET"])
 def api_state_get():
     sid = _sid()

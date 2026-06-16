@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hirepilot"
-version = "1.1.5"
+version = "1.2.0"
 description = "HirePilot — copiloto inteligente de vagas com análise ATS, matching e interface web."
 readme = "README.md"
 requires-python = ">=3.10"

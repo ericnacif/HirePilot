@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 
 from cv_apply.ats import analyze_ats
 from cv_apply.config import Settings
+from cv_apply.locations import LocationFilter, parse_location
 from cv_apply.matching import apply_keyword_boost, apply_preference_boost, rank_jobs
 from cv_apply.profile import CandidateProfile, JobMatch, JobPosting
 from cv_apply.relevance import (
@@ -57,6 +58,7 @@ class SearchContext:
     limit_per_source: int = 40
     global_cap: int = GLOBAL_JOB_CAP
     seen_job_ids: set[str] = field(default_factory=set)
+    location_filter: LocationFilter | None = None
 
 
 def apply_payload_to_settings(data: dict, settings: Settings) -> SearchContext:
@@ -79,7 +81,15 @@ def apply_payload_to_settings(data: dict, settings: Settings) -> SearchContext:
         settings.search_keywords = "tecnologia"
         settings.search_queries = sector_search_queries("tec_all")
 
-    settings.search_location = data.get("location") or "Brasil"
+    loc_filter = parse_location(
+        data.get("location") or "",
+        scope=data.get("location_scope"),
+        city=data.get("location_city"),
+        state=data.get("location_state"),
+        include_remote=bool(data.get("location_include_remote")),
+    )
+    settings.search_location = loc_filter.indeed_query() or loc_filter.display_label()
+
     settings.search_workplace = [w.lower() for w in data.get("workplace", [])]
     settings.search_job_type = [j.lower() for j in data.get("job_type", [])]
     settings.search_experience = [e.lower() for e in data.get("experience", [])]
@@ -120,6 +130,7 @@ def apply_payload_to_settings(data: dict, settings: Settings) -> SearchContext:
         limit_per_source=limit,
         global_cap=global_cap,
         seen_job_ids=set(data.get("seen_ids") or []),
+        location_filter=loc_filter,
     )
     return ctx
 
@@ -143,9 +154,18 @@ def process_raw_jobs(
 
     all_jobs = dedupe_jobs(all_jobs)
 
+    filt = ctx.location_filter or parse_location(settings.search_location)
+    if filt.scope.value != "any":
+        use_fallback = not filt.strict and (not filt.is_specific and ctx.broad)
+        all_jobs = filter_by_location(
+            all_jobs,
+            settings.search_location,
+            fallback=use_fallback,
+            location_filter=filt,
+        )
+
     # Modo amplo: filtros refinados viram preferência no ranking, não exclusão.
     if not ctx.broad:
-        all_jobs = filter_by_location(all_jobs, settings.search_location)
         all_jobs = filter_by_salary(all_jobs, ctx.salary_min, ctx.salary_max)
         all_jobs = filter_by_experience(all_jobs, settings.search_experience)
         user_terms = extract_query_terms(ctx.user_keywords)
@@ -172,7 +192,7 @@ def rank_and_boost(
     if ctx.user_keywords:
         matches = apply_keyword_boost(matches, ctx.user_keywords)
     if ctx.broad:
-        matches = apply_preference_boost(matches, settings)
+        matches = apply_preference_boost(matches, settings, location_filter=ctx.location_filter)
     return matches
 
 
@@ -299,6 +319,18 @@ def _assemble_result(
     filtered = process_raw_jobs(all_jobs, ctx, settings)
 
     if not filtered:
+        filt = ctx.location_filter
+        loc_hint = ""
+        if filt and filt.is_specific and fetched_count:
+            loc_hint = (
+                f"Nenhuma vaga em {filt.display_label()} com os filtros atuais. "
+                "Tente ampliar para o estado inteiro ou marcar «Incluir remotas»."
+            )
+        elif filt and filt.is_specific:
+            loc_hint = (
+                f"Buscamos em {filt.display_label()}. "
+                "Poucas vagas listadas nessa região — tente outra área ou fontes."
+            )
         return SearchResult(
             jobs=[],
             sources_status=sources_status,
@@ -310,6 +342,9 @@ def _assemble_result(
                 "cached": False,
                 "by_source": {},
                 "by_source_fetched": {n: len(raw_by_source.get(n, [])) for n in settings.search_sources},
+                "location_label": filt.display_label() if filt else "",
+                "location_scope": filt.scope.value if filt else "",
+                "location_hint": loc_hint,
             },
             job_models={},
             source_by_id=source_by_id,
@@ -372,6 +407,8 @@ def _assemble_result(
             "after_filters": len(filtered),
             "cached": any_cached,
             "fast_rank": fast_rank,
+            "location_label": (ctx.location_filter.display_label() if ctx.location_filter else ""),
+            "location_scope": (ctx.location_filter.scope.value if ctx.location_filter else ""),
         },
         job_models=job_models,
         source_by_id=source_by_id,

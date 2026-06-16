@@ -38,6 +38,8 @@ installer/hirepilot-built.iss
 
 # --- Dados do app (local / desktop) ---
 data/
+!cv_apply/data/
+!cv_apply/data/br_municipios.json
 uploads/
 browser_data/
 **/playwright-browsers/

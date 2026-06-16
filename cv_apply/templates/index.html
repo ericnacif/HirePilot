@@ -17,10 +17,10 @@
   <div class="brand">
     <img class="brand-wordmark brand-wordmark--dark" src="{{ url_for('static', filename='logo-wordmark.png') }}" alt="HirePilot" height="38">
     <img class="brand-wordmark brand-wordmark--light" src="{{ url_for('static', filename='logo-wordmark-light.png') }}" alt="HirePilot" height="38">
-    <span class="sub" id="headerSub">Ache emprego mais rápido</span>
+    <span class="sub" id="headerSub">Ache emprego perto de você</span>
   </div>
   <span class="spacer"></span>
-  <button id="modeBtn" class="btn small ghost" type="button" onclick="toggleSimpleMode()" title="Alternar modo de uso">Modo rápido</button>
+  <button id="modeBtn" class="btn small ghost" type="button" onclick="toggleSimpleMode()" title="Alternar modo de uso">Modo simples</button>
   <button id="dashBtn" class="btn small ghost pro-only hidden" onclick="openDashboard()" aria-label="Abrir painel"><span class="bi">📊</span> Painel</button>
   <button id="themeBtn" class="btn small ghost icon-btn" onclick="toggleTheme()" aria-label="Alternar tema">☀️</button>
   <button id="resetBtn" class="btn small ghost hidden" onclick="resetProfile()">Trocar currículo</button>
@@ -159,8 +159,37 @@
               </select>
               <label for="keywords" id="keywordsLabel">Cargo ou palavra (opcional)</label>
               <input type="text" id="keywords" placeholder="ex: vendedor, auxiliar, motorista">
-              <label for="location">Cidade ou região</label>
-              <input type="text" id="location" placeholder="ex: São Paulo, Brasil" value="Brasil">
+              <label for="locationScope" id="locationBlockTitle">Onde você quer trabalhar?</label>
+              <select id="locationScope" onchange="onLocationScopeChange()">
+                <option value="city" selected>Na minha cidade</option>
+                <option value="state">No meu estado (qualquer cidade)</option>
+                <option value="br">Em todo o Brasil</option>
+                <option value="remote">Só remoto / home office</option>
+                <option value="foreign">No exterior</option>
+              </select>
+              <div id="locationCityBlock" class="location-block">
+                <div class="location-fields">
+                  <input type="text" id="locationCity" placeholder="Ex: Manhuaçu" autocomplete="off" list="cityDatalist" oninput="onLocationFieldsChange()">
+                  <select id="locationState" aria-label="Estado (UF)" onchange="onLocationStateChange()">
+                    <option value="">UF</option>
+                    <option value="AC">AC</option><option value="AL">AL</option><option value="AP">AP</option>
+                    <option value="AM">AM</option><option value="BA">BA</option><option value="CE">CE</option>
+                    <option value="DF">DF</option><option value="ES">ES</option><option value="GO">GO</option>
+                    <option value="MA">MA</option><option value="MT">MT</option><option value="MS">MS</option>
+                    <option value="MG">MG</option><option value="PA">PA</option><option value="PB">PB</option>
+                    <option value="PR">PR</option><option value="PE">PE</option><option value="PI">PI</option>
+                    <option value="RJ">RJ</option><option value="RN">RN</option><option value="RS">RS</option>
+                    <option value="RO">RO</option><option value="RR">RR</option><option value="SC">SC</option>
+                    <option value="SP">SP</option><option value="SE">SE</option><option value="TO">TO</option>
+                  </select>
+                </div>
+                <datalist id="cityDatalist"></datalist>
+                <label class="chip location-remote-opt" id="locationRemoteWrap">
+                  <input type="checkbox" id="locationIncludeRemote" onchange="saveFilters()"> Incluir vagas remotas também
+                </label>
+              </div>
+              <p class="hint" id="locationHint">Informe sua cidade e estado — buscamos vagas aí perto.</p>
+              <input type="hidden" id="location" value="">
               <div class="pro-only">
               <label>Salário mínimo (R$/mês, opcional)</label>
               <input type="number" id="salary_min" placeholder="ex: 5000" min="0" step="500">

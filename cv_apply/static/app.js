@@ -96,6 +96,11 @@ function applySimpleDefaults() {
   if ($("broad")) $("broad").checked = true;
   if ($("semantic")) $("semantic").checked = false;
   if ($("only_new")) $("only_new").checked = false;
+  if ($("locationScope")) $("locationScope").value = "city";
+  if ($("locationCity")) $("locationCity").value = "";
+  if ($("locationState")) $("locationState").value = "";
+  if ($("locationIncludeRemote")) $("locationIncludeRemote").checked = false;
+  onLocationScopeChange();
 }
 
 function applySimpleModeUI() {
@@ -103,13 +108,13 @@ function applySimpleModeUI() {
   document.body.classList.toggle("simple-mode", simple);
   const btn = $("modeBtn");
   if (btn) {
-    btn.textContent = simple ? "Modo completo" : "Modo rápido";
+    btn.textContent = simple ? "Modo completo" : "Modo simples";
     btn.title = simple
       ? "Ver opções avançadas (ATS, match profundo…)"
-      : "Voltar ao modo simples para buscar emprego rápido";
+      : "Voltar ao modo simples para buscar emprego perto de você";
   }
   renderSeniorityOptions();
-  if ($("headerSub")) $("headerSub").textContent = simple ? "Ache emprego mais rápido" : "Sua jornada. Nossa inteligência.";
+  if ($("headerSub")) $("headerSub").textContent = simple ? "Ache emprego perto de você" : "Sua jornada. Nossa inteligência.";
   if ($("statCompatLabel")) $("statCompatLabel").textContent = simple ? "Combina com você" : "Compatibilidade geral";
   if ($("seniorityLabel")) $("seniorityLabel").textContent = simple ? "Experiência" : "Senioridade";
   if ($("uploadBadge")) $("uploadBadge").textContent = simple ? "✦ EMPREGO MAIS PERTO DE VOCÊ" : "✦ SUA JORNADA. NOSSA INTELIGÊNCIA.";
@@ -135,7 +140,148 @@ function toggleSimpleMode() {
   saveFilters();
   updateFilterCount();
   if (LAST_JOBS.length) renderResults();
-  toast(next ? "Modo rápido — linguagem simples e menos opções." : "Modo completo — todas as ferramentas.", "");
+  toast(next ? "Modo simples — linguagem clara e busca na sua região." : "Modo completo — todas as ferramentas.", "");
+}
+
+/* ---------- localização ---------- */
+const LOCATION_HINTS = {
+  city: "Informe sua cidade e estado — buscamos vagas aí perto (ex.: Manhuaçu, MG).",
+  state: "Escolha o estado — mostramos vagas de qualquer cidade dentro dele.",
+  br: "Vagas em todo o Brasil. Remotas incluídas; fora do país excluídas.",
+  remote: "Apenas vagas remotas ou home office.",
+  foreign: "Vagas fora do Brasil.",
+};
+let CITY_SUGGEST_TIMER = null;
+
+function locationScope() {
+  return ($("locationScope") && $("locationScope").value) || "city";
+}
+
+function buildLocationLegacyString() {
+  const scope = locationScope();
+  const city = ($("locationCity") && $("locationCity").value || "").trim();
+  const state = ($("locationState") && $("locationState").value || "").trim();
+  if (scope === "city" && city) return state ? city + ", " + state : city;
+  if (scope === "state" && state) return state;
+  if (scope === "br") return "Brasil";
+  if (scope === "remote") return "Remoto";
+  if (scope === "foreign") return "Exterior";
+  return "";
+}
+
+function syncLocationHidden() {
+  const hidden = $("location");
+  if (hidden) hidden.value = buildLocationLegacyString();
+}
+
+function collectLocationFields() {
+  syncLocationHidden();
+  return {
+    location_scope: locationScope(),
+    location_city: ($("locationCity") && $("locationCity").value || "").trim(),
+    location_state: ($("locationState") && $("locationState").value || "").trim(),
+    location_include_remote: !!($("locationIncludeRemote") && $("locationIncludeRemote").checked),
+    location: buildLocationLegacyString(),
+  };
+}
+
+function validateLocation() {
+  const scope = locationScope();
+  const city = ($("locationCity") && $("locationCity").value || "").trim();
+  const state = ($("locationState") && $("locationState").value || "").trim();
+  if (scope === "city" && !city) {
+    return "Informe sua cidade — é assim que achamos vagas perto de você.";
+  }
+  if (scope === "city" && !state) {
+    return "Selecione o estado (UF) da sua cidade.";
+  }
+  if (scope === "state" && !state) {
+    return "Selecione seu estado para buscar vagas na região.";
+  }
+  return null;
+}
+
+function onLocationScopeChange() {
+  const scope = locationScope();
+  const block = $("locationCityBlock");
+  const cityField = $("locationCity");
+  const remoteWrap = $("locationRemoteWrap");
+  if (block) {
+    const hideAll = scope === "br" || scope === "remote" || scope === "foreign";
+    block.classList.toggle("hidden", hideAll);
+    if (cityField) cityField.classList.toggle("hidden", scope === "state");
+  }
+  if (remoteWrap) {
+    remoteWrap.classList.toggle("hidden", scope === "remote" || scope === "foreign" || scope === "br");
+  }
+  const hint = $("locationHint");
+  if (hint) hint.textContent = LOCATION_HINTS[scope] || "";
+  syncLocationHidden();
+  saveFilters();
+  updateFilterCount();
+}
+
+function onLocationStateChange() {
+  syncCityDatalist();
+  onLocationFieldsChange();
+}
+
+function onLocationFieldsChange() {
+  syncLocationHidden();
+  clearTimeout(CITY_SUGGEST_TIMER);
+  CITY_SUGGEST_TIMER = setTimeout(syncCityDatalist, 220);
+  saveFilters();
+  updateFilterCount();
+}
+
+async function syncCityDatalist() {
+  const dl = $("cityDatalist");
+  const state = ($("locationState") && $("locationState").value || "").trim();
+  const q = ($("locationCity") && $("locationCity").value || "").trim();
+  if (!dl || locationScope() !== "city") return;
+  if (!state && q.length < 2) { dl.innerHTML = ""; return; }
+  try {
+    const params = new URLSearchParams();
+    if (state) params.set("state", state);
+    if (q) params.set("q", q);
+    const cities = await fetch("/api/locations/cities?" + params).then(r => r.json());
+    dl.innerHTML = cities.map(c => "<option value=\"" + esc(c) + "\">").join("");
+  } catch (e) { /* offline */ }
+}
+
+function applyLocationFields(f) {
+  if (!f) return;
+  if (f.location_scope && $("locationScope")) $("locationScope").value = f.location_scope;
+  else if (f.location && $("locationScope")) {
+    const loc = String(f.location).trim().toLowerCase();
+    if (loc === "brasil" || loc === "brazil") $("locationScope").value = "br";
+    else if (loc === "remoto" || loc === "remote") $("locationScope").value = "remote";
+    else if (loc === "exterior" || loc === "foreign") $("locationScope").value = "foreign";
+    else if (/^[a-z]{2}$/i.test(loc)) $("locationScope").value = "state";
+    else $("locationScope").value = "city";
+  }
+  if (f.location_city != null && $("locationCity")) $("locationCity").value = f.location_city;
+  if (f.location_state != null && $("locationState")) $("locationState").value = f.location_state;
+  if (f.location_include_remote != null && $("locationIncludeRemote")) {
+    $("locationIncludeRemote").checked = !!f.location_include_remote;
+  } else if (f.location_scope === "city" && f.location && !f.location_city) {
+    const parts = String(f.location).split(",").map(s => s.trim());
+    if (parts.length >= 2 && $("locationCity")) $("locationCity").value = parts.slice(0, -1).join(", ");
+    if (parts.length >= 2 && $("locationState")) $("locationState").value = parts[parts.length - 1].slice(0, 2).toUpperCase();
+  }
+  onLocationScopeChange();
+  syncCityDatalist();
+}
+
+function locationBanner() {
+  const label = LAST_META.location_label;
+  if (!label) return "";
+  const scope = LAST_META.location_scope || "";
+  const scopeTxt = {
+    city: "na cidade", state: "no estado", br: "no Brasil",
+    remote: "remotas", foreign: "no exterior",
+  }[scope] || "em";
+  return "<div class=\"location-banner\">📍 Vagas " + esc(scopeTxt) + ": <b>" + esc(label) + "</b></div>";
 }
 
 /* ---------- helpers ---------- */
@@ -484,7 +630,7 @@ function collectFilters() {
   const capField = parseInt($("global_cap").value, 10);
   return {
     sector: $("sector").value, keywords: $("keywords").value,
-    location: $("location").value,
+    ...collectLocationFields(),
     workplace: getChecked("workplace"), job_type: getChecked("job_type"),
     experience: getChecked("experience"), date_posted: $("date_posted").value,
     sources: getChecked("sources"), limit,
@@ -508,7 +654,8 @@ function applyFilterObject(f) {
   if (!f) return;
   if (f.sector != null) $("sector").value = f.sector;
   if (f.keywords != null) $("keywords").value = f.keywords;
-  if (f.location != null) $("location").value = f.location;
+  applyLocationFields(f);
+  if (f.location != null && !f.location_scope && $("location")) $("location").value = f.location;
   if (f.date_posted) $("date_posted").value = f.date_posted;
   if (f.limit) $("limit").value = f.limit;
   if (f.global_cap) $("global_cap").value = f.global_cap;
@@ -533,7 +680,10 @@ function countActiveFilters() {
   const defaultSector = isSimpleMode() ? "emprego_geral" : "tec_all";
   if (sector && sector !== defaultSector) n++;
   if (($("keywords").value || "").trim()) n++;
-  if (($("location").value || "").trim().toLowerCase() !== "brasil") n++;
+  const locScope = locationScope();
+  if (locScope !== "city") n++;
+  else if (($("locationCity").value || "").trim() || ($("locationState").value || "").trim()) n++;
+  if ($("locationIncludeRemote") && $("locationIncludeRemote").checked) n++;
   if (getChecked("workplace").length) n++;
   if (getChecked("job_type").length) n++;
   if (getChecked("experience").length) n++;
@@ -553,7 +703,11 @@ function updateFilterCount() {
 function clearFilters() {
   $("sector").value = isSimpleMode() ? "emprego_geral" : "tec_all";
   $("keywords").value = "";
-  $("location").value = "Brasil";
+  if ($("locationScope")) $("locationScope").value = isSimpleMode() ? "city" : "br";
+  if ($("locationCity")) $("locationCity").value = "";
+  if ($("locationState")) $("locationState").value = "";
+  if ($("locationIncludeRemote")) $("locationIncludeRemote").checked = false;
+  onLocationScopeChange();
   $("date_posted").value = "qualquer";
   $("limit").value = "40";
   if ($("broad")) $("broad").checked = true;
@@ -624,6 +778,8 @@ async function search() {
   const payload = collectFilters();
   saveFilters();
   if (!payload.sources.length) { toast("Selecione ao menos um site para buscar.", "error"); return; }
+  const locErr = validateLocation();
+  if (locErr) { toast(locErr, "warn"); return; }
   if (!payload.sector && !(payload.keywords || "").trim()) {
     toast(isSimpleMode() ? "Escolha a área ou digite um cargo." : "Escolha um setor ou informe palavras-chave.", "error");
     return;
@@ -860,7 +1016,7 @@ function renderResults() {
   const start = (CURRENT_PAGE - 1) * PAGE_SIZE;
   const pageJobs = jobs.slice(start, start + PAGE_SIZE);
 
-  let html = sourcesStrip() + sourceFilterBar() + toolbar(jobs.length);
+  let html = locationBanner() + sourcesStrip() + sourceFilterBar() + toolbar(jobs.length);
   pageJobs.forEach((j, i) => { html += jobCard(j, i); });
   html += pager(pages);
   el.innerHTML = html;
@@ -873,9 +1029,11 @@ function smartEmptyState() {
   const empty = LAST_SOURCES.filter(s => s.count === 0).map(s => SOURCE_LABELS[s.source] || s.source);
 
   let msg, hint = "";
-  if (totalRaw > 0) {
-    msg = "As fontes retornaram " + totalRaw + " vaga(s), mas nenhuma ficou após os filtros opcionais.";
-    hint = '<div class="muted" style="margin-top:8px">Dica: desmarque filtros de <b>Nível</b> ou <b>Modelo de trabalho</b>, ou ative <b>Busca ampla</b>.</div>';
+  if (LAST_META.location_hint) {
+    msg = LAST_META.location_hint;
+  } else if (totalRaw > 0) {
+    msg = "As fontes retornaram " + totalRaw + " vaga(s), mas nenhuma ficou na sua região ou filtros.";
+    hint = '<div class="muted" style="margin-top:8px">Tente marcar <b>Incluir vagas remotas</b>, ampliar para o estado inteiro, ou mudar a área.</div>';
   } else {
     msg = "Nenhuma vaga encontrada nas fontes selecionadas.";
     if (empty.length) hint = '<div class="muted" style="margin-top:8px">Sem retorno de: ' + esc(empty.join(", ")) + ". Tente outras fontes ou amplie a busca.</div>";
@@ -891,7 +1049,7 @@ function toolbar(total) {
   const appliedCount = LAST_JOBS.filter(j => j.applied || isApplied(j.id)).length;
   return '<div class="count">'
     + '<span><b>' + total + '</b> vaga(s)'
-    + (FILTER_SOURCE || ONLY_FAVORITES || HIDE_APPLIED ? " (filtradas)" : " · ranqueadas por compatibilidade")
+    + (FILTER_SOURCE || ONLY_FAVORITES || HIDE_APPLIED ? " (filtradas)" : (isSimpleMode() ? " · na sua região" : " · ranqueadas por compatibilidade"))
     + "</span>"
     + '<span class="toolbar">'
     + '<label class="tb-label">Ordenar: '
@@ -1405,6 +1563,7 @@ async function loadAppMeta() {
 document.addEventListener("DOMContentLoaded", () => {
   applySimpleModeUI();
   if (isSimpleMode() && !lsGet(FILTERS_KEY, null)) applySimpleDefaults();
+  onLocationScopeChange();
   loadAppMeta();
   maybeShowOnboard();
 });
