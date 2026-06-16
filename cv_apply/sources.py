@@ -207,6 +207,29 @@ def search_remoteok(
 # --------------------------------------------------------------------------- #
 # Gupy (https://portal.gupy.io) — API pública do portal de empregabilidade
 # --------------------------------------------------------------------------- #
+def _gupy_keyword_candidates(keywords: str) -> list[str]:
+    """A API da Gupy casa o ``jobName`` de forma quase literal, então frases
+    longas (ex.: vindas de um setor) zeram os resultados. Geramos candidatos do
+    mais específico ao mais genérico: frase completa → 2 primeiras palavras →
+    primeira palavra (geralmente o cargo)."""
+    kw = (keywords or "").strip()
+    if not kw:
+        return [""]
+    words = kw.split()
+    candidates = [kw]
+    if len(words) > 2:
+        candidates.append(" ".join(words[:2]))
+    if len(words) > 1:
+        candidates.append(words[0])
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for c in candidates:
+        if c not in seen:
+            seen.add(c)
+            ordered.append(c)
+    return ordered
+
+
 def search_gupy(
     settings: Settings, filters: SearchFilters, max_jobs: int
 ) -> list[JobPosting]:
@@ -216,64 +239,77 @@ def search_gupy(
         "Origin": "https://portal.gupy.io",
         "Referer": "https://portal.gupy.io/",
     }
-    jobs: list[JobPosting] = []
-    offset = 0
     page_size = min(max_jobs, 100)
     wp_types = filters.gupy_workplace_types()
     job_types = filters.gupy_job_types()
 
-    try:
-        with httpx.Client(timeout=30, headers=headers, follow_redirects=True) as c:
-            while len(jobs) < max_jobs:
-                params = {
-                    "jobName": filters.keywords,
-                    "limit": str(page_size),
-                    "offset": str(offset),
-                }
-                if filters.only_remote():
-                    params["isRemoteWork"] = "true"
-                resp = c.get(url, params=params)
-                resp.raise_for_status()
-                data = resp.json()
-                items = data.get("data", [])
-                if not items:
+    def _fetch(client: httpx.Client, job_name: str) -> list[JobPosting]:
+        found: list[JobPosting] = []
+        offset = 0
+        while len(found) < max_jobs:
+            params = {
+                "jobName": job_name,
+                "limit": str(page_size),
+                "offset": str(offset),
+            }
+            if filters.only_remote():
+                params["isRemoteWork"] = "true"
+            resp = client.get(url, params=params)
+            resp.raise_for_status()
+            data = resp.json()
+            items = data.get("data", [])
+            if not items:
+                break
+
+            for item in items:
+                wp = (item.get("workplaceType") or "").lower()
+                if wp_types and wp not in wp_types:
+                    continue
+                if job_types and item.get("type") not in job_types:
+                    continue
+                published = _parse_date(item.get("publishedDate"))
+                if not filters.matches_date(published):
+                    continue
+
+                city = item.get("city") or ""
+                state = item.get("state") or ""
+                loc = ", ".join(p for p in (city, state) if p) or item.get("country", "")
+                if item.get("isRemoteWork"):
+                    loc = f"{loc} (Remoto)" if loc else "Remoto"
+
+                found.append(
+                    JobPosting(
+                        id=_make_id("gupy", str(item.get("id"))),
+                        title=item.get("name", "Sem título"),
+                        company=item.get("careerPageName", "Empresa não informada"),
+                        location=loc,
+                        url=item.get("jobUrl", ""),
+                        description=_strip_html(item.get("description", "")),
+                        easy_apply=False,
+                        posted_at=item.get("publishedDate"),
+                    )
+                )
+                if len(found) >= max_jobs:
                     break
 
-                for item in items:
-                    wp = (item.get("workplaceType") or "").lower()
-                    if wp_types and wp not in wp_types:
-                        continue
-                    if job_types and item.get("type") not in job_types:
-                        continue
-                    published = _parse_date(item.get("publishedDate"))
-                    if not filters.matches_date(published):
-                        continue
+            pagination = data.get("pagination", {})
+            total = pagination.get("total", 0)
+            offset += page_size
+            if offset >= total:
+                break
+        return found
 
-                    city = item.get("city") or ""
-                    state = item.get("state") or ""
-                    loc = ", ".join(p for p in (city, state) if p) or item.get("country", "")
-                    if item.get("isRemoteWork"):
-                        loc = f"{loc} (Remoto)" if loc else "Remoto"
-
-                    jobs.append(
-                        JobPosting(
-                            id=_make_id("gupy", str(item.get("id"))),
-                            title=item.get("name", "Sem título"),
-                            company=item.get("careerPageName", "Empresa não informada"),
-                            location=loc,
-                            url=item.get("jobUrl", ""),
-                            description=_strip_html(item.get("description", "")),
-                            easy_apply=False,
-                            posted_at=item.get("publishedDate"),
+    jobs: list[JobPosting] = []
+    try:
+        with httpx.Client(timeout=30, headers=headers, follow_redirects=True) as c:
+            for candidate in _gupy_keyword_candidates(filters.keywords):
+                jobs = _fetch(c, candidate)
+                if jobs:
+                    if candidate != filters.keywords:
+                        logger.info(
+                            "Gupy: '%s' sem resultados; usando '%s'",
+                            filters.keywords, candidate,
                         )
-                    )
-                    if len(jobs) >= max_jobs:
-                        break
-
-                pagination = data.get("pagination", {})
-                total = pagination.get("total", 0)
-                offset += page_size
-                if offset >= total:
                     break
     except Exception as exc:
         logger.warning("Gupy falhou: %s", exc)

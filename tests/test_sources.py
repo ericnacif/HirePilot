@@ -3,7 +3,28 @@
 from datetime import datetime, timezone
 
 from cv_apply.profile import JobPosting
-from cv_apply.sources import _make_id, _parse_date, _strip_html, dedupe_jobs
+from cv_apply.sources import (
+    _gupy_keyword_candidates,
+    _make_id,
+    _parse_date,
+    _strip_html,
+    dedupe_jobs,
+)
+
+
+def test_gupy_keyword_candidates_encurta_frase_longa():
+    cands = _gupy_keyword_candidates("desenvolvedor programador software full stack")
+    assert cands[0] == "desenvolvedor programador software full stack"
+    assert cands[-1] == "desenvolvedor"  # cai para o cargo principal
+    assert "desenvolvedor programador" in cands
+
+
+def test_gupy_keyword_candidates_uma_palavra():
+    assert _gupy_keyword_candidates("desenvolvedor") == ["desenvolvedor"]
+
+
+def test_gupy_keyword_candidates_vazio():
+    assert _gupy_keyword_candidates("") == [""]
 
 
 def test_strip_html():
