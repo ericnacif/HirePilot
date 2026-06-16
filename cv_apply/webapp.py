@@ -13,6 +13,7 @@ import io
 import json
 import logging
 import os
+import sys
 import threading
 import time
 import uuid
@@ -46,7 +47,24 @@ logger = logging.getLogger(__name__)
 
 MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "8"))
 
-app = Flask(__name__)
+
+def _resource_dir(name: str) -> str:
+    """Caminho de ``templates``/``static`` rodando do código ou empacotado.
+
+    No executável do PyInstaller os dados são extraídos em ``sys._MEIPASS``;
+    fora dele ficam ao lado deste módulo.
+    """
+    base = getattr(sys, "_MEIPASS", None)
+    if base:
+        return os.path.join(base, "cv_apply", name)
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), name)
+
+
+app = Flask(
+    __name__,
+    template_folder=_resource_dir("templates"),
+    static_folder=_resource_dir("static"),
+)
 app.secret_key = os.environ.get("CV_APPLY_SECRET", os.urandom(24).hex())
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
 

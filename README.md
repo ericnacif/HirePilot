@@ -84,6 +84,44 @@ docker build -t vagamatch .
 docker run -p 5000:5000 -v vagamatch-data:/app/data vagamatch
 ```
 
+### App desktop — executável Windows (.exe)
+
+Para quem **não tem Python** instalado: gere um único arquivo `VagaMatch.exe` que abre o
+navegador automaticamente (duplo clique e pronto).
+
+**Gerar o executável** (só quem desenvolve precisa fazer isso uma vez):
+
+```bat
+build_exe.bat
+```
+
+O arquivo sai em `dist\VagaMatch.exe`. Distribua esse `.exe` — não é preciso instalar nada.
+
+**Usar o executável:**
+
+1. Dê duplo clique em `VagaMatch.exe`
+2. O navegador abre sozinho com a interface
+3. Mantenha a janela preta (console) aberta enquanto usa o app
+4. Feche a janela ou pressione Ctrl+C para encerrar
+
+**O que vem no .exe (versão leve):**
+
+| Recurso | No .exe |
+|---------|---------|
+| Interface web, upload, ATS, carta, adaptar currículo | Sim |
+| Fontes Gupy, Remotive, RemoteOK | Sim |
+| LinkedIn / InfoJobs (navegador) | Não |
+| Matching semântico (torch) | Não — usa palavras-chave |
+
+Os dados (currículos enviados) ficam em `%LOCALAPPDATA%\VagaMatch\data\`.
+
+**Testar o modo desktop sem gerar o .exe** (com Python instalado):
+
+```bash
+pip install -r requirements-web.txt
+python run_app.py
+```
+
 ### Desenvolvimento
 
 ```bash

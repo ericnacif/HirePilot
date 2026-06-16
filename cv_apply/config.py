@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -11,6 +12,21 @@ from pydantic import BaseModel, Field
 load_dotenv()
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _writable_base() -> Path:
+    """Base para arquivos graváveis (uploads/dados).
+
+    No executável empacotado (PyInstaller), ``PROJECT_ROOT`` aponta para uma
+    pasta temporária somente-leitura; usamos então uma pasta estável do usuário
+    (``%LOCALAPPDATA%\\VagaMatch`` no Windows, ``~/.vagamatch`` nos demais).
+    """
+    if getattr(sys, "frozen", False):
+        if sys.platform.startswith("win"):
+            root = os.getenv("LOCALAPPDATA") or os.path.expanduser("~")
+            return Path(root) / "VagaMatch"
+        return Path(os.path.expanduser("~")) / ".vagamatch"
+    return PROJECT_ROOT
 
 
 def _parse_list(value: str) -> list[str]:
@@ -86,13 +102,18 @@ class Settings(BaseModel):
     data_dir: Path = Field(default_factory=lambda: Path(os.getenv("DATA_DIR", "data")))
 
     def resolve_paths(self) -> Settings:
-        """Resolve caminhos relativos ao diretório do projeto."""
+        """Resolve caminhos relativos ao diretório do projeto.
+
+        Arquivos graváveis (dados/uploads) usam :func:`_writable_base`, que aponta
+        para uma pasta do usuário quando o app roda como executável empacotado.
+        """
+        base = _writable_base()
         if not self.resume_path.is_absolute():
-            self.resume_path = PROJECT_ROOT / self.resume_path
+            self.resume_path = base / self.resume_path
         if not self.browser_data_dir.is_absolute():
-            self.browser_data_dir = PROJECT_ROOT / self.browser_data_dir
+            self.browser_data_dir = base / self.browser_data_dir
         if not self.data_dir.is_absolute():
-            self.data_dir = PROJECT_ROOT / self.data_dir
+            self.data_dir = base / self.data_dir
         # Compatibilidade: SEARCH_REMOTE=true vira workplace=remoto se nada definido
         if not self.search_workplace and self.search_remote:
             self.search_workplace = ["remoto"]
