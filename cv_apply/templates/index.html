@@ -14,6 +14,7 @@
   </div>
   <span class="sub">— suba seu currículo, veja sua nota ATS e encontre vagas que combinam</span>
   <span class="spacer"></span>
+  <button id="dashBtn" class="btn small ghost hidden" onclick="openDashboard()" aria-label="Abrir painel">📊 Painel</button>
   <button id="themeBtn" class="btn small ghost" onclick="toggleTheme()" aria-label="Alternar tema">☀️</button>
   <button id="resetBtn" class="btn small ghost hidden" onclick="resetProfile()">Trocar currículo</button>
 </header>
@@ -137,6 +138,12 @@
     <button class="btn primary" onclick="document.getElementById('modal').close()">Fechar</button>
   </div>
 </dialog>
+
+<div id="compareBar" class="compare-bar hidden">
+  <span class="cmp-count">0 selecionada(s)</span>
+  <button class="btn small primary" onclick="openCompare()">Comparar</button>
+  <button class="btn small ghost" onclick="clearCompare()">Limpar</button>
+</div>
 
 <div id="toasts"></div>
 

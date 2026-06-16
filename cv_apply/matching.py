@@ -11,7 +11,7 @@ os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
 os.environ.setdefault("TRANSFORMERS_NO_ADVISORY_WARNINGS", "1")
 
 from cv_apply.profile import CandidateProfile, JobMatch, JobPosting
-from cv_apply.skills_dict import compile_skill_regex
+from cv_apply.skills_dict import find_skills, text_has_skill
 
 logger = logging.getLogger(__name__)
 
@@ -114,17 +114,29 @@ def _tfidf_similarity(text_a: str, text_b: str) -> float:
 
 
 def _keyword_overlap(profile: CandidateProfile, job: JobPosting) -> tuple[float, list[str]]:
+    """Sobreposição de skills entre perfil e vaga.
+
+    O score prioriza a **cobertura das skills exigidas pela vaga** (quanto do que
+    a vaga pede o candidato tem), em vez de dividir pelo total de skills do
+    candidato — assim não penaliza quem tem um currículo amplo.
+    """
     if not profile.skills:
         return 0.0, []
 
     job_text = _normalize(f"{job.title} {job.description}")
-    matched: list[str] = []
-    for skill in profile.skills:
-        if compile_skill_regex(skill).search(job_text):
-            matched.append(skill)
+    matched = [skill for skill in profile.skills if text_has_skill(skill, job_text)]
 
-    ratio = len(matched) / len(profile.skills) if profile.skills else 0.0
-    return ratio, matched
+    job_skills = find_skills(job_text)
+    if job_skills:
+        covered = sum(1 for js in job_skills if text_has_skill(js, " ".join(profile.skills).lower()))
+        coverage = covered / len(job_skills)
+        # mistura cobertura da vaga (peso maior) com proporção do candidato
+        own_ratio = len(matched) / len(profile.skills)
+        ratio = 0.7 * coverage + 0.3 * own_ratio
+    else:
+        ratio = len(matched) / len(profile.skills)
+
+    return min(1.0, ratio), matched
 
 
 def _seniority_score(profile: CandidateProfile, job: JobPosting) -> float:

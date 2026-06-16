@@ -64,6 +64,26 @@ playwright install chromium
 
 Com a instalação via `pip install -e .`, você pode usar o comando `vagamatch` no lugar de `python -m cv_apply` (ex.: `vagamatch web`).
 
+### Docker (rodar com um comando)
+
+A forma mais rápida de subir a interface web, sem instalar nada além do Docker:
+
+```bash
+docker compose up --build
+```
+
+Acesse `http://localhost:5000`. A imagem é enxuta (sem Playwright/torch): as fontes
+via API (Gupy, Remotive, RemoteOK) e o matching por palavras-chave funcionam normalmente.
+As fontes LinkedIn/InfoJobs (que abrem navegador) e o matching semântico ficam
+desativados nesse modo. Os dados (uploads) ficam no volume `vagamatch-data`.
+
+Sem o compose:
+
+```bash
+docker build -t vagamatch .
+docker run -p 5000:5000 -v vagamatch-data:/app/data vagamatch
+```
+
 ### Desenvolvimento
 
 ```bash
@@ -96,6 +116,9 @@ Principais variáveis:
 | `DAILY_APPLY_LIMIT` | Limite diário de vagas | `10` |
 | `USE_SEMANTIC_MATCHING` | Usar sentence-transformers | `true` |
 | `LLM_PROVIDER` | `none`, `ollama` ou `groq` | `none` |
+| `MAX_UPLOAD_MB` | Tamanho máximo do currículo (web) | `8` |
+| `RATE_LIMIT_MAX` | Máx. de requisições à API por minuto (web) | `30` |
+| `SEARCH_RATE_MAX` | Máx. de buscas por minuto (web) | `8` |
 
 ### Filtros e fontes
 
@@ -135,6 +158,11 @@ Abre no navegador uma interface (VagaMatch) que **qualquer pessoa** pode usar �
 4. Escolhe as fontes (Gupy, Remotive, RemoteOK por padrão; InfoJobs/LinkedIn abrem navegador)
 5. Vê as vagas **ordenadas por compatibilidade**, cada uma com **% ATS** e skills em comum
 6. Em cada vaga: **Aplicar**, **Análise ATS** (cobertura + palavras faltando), **Adaptar currículo**, **Carta** e **Já apliquei** (acompanhamento)
+7. **Comparar até 3 vagas** lado a lado e abrir o **Painel** com estatísticas (candidaturas, score médio, favoritos) e histórico
+
+Outros recursos da interface: tema claro/escuro, paginação e ordenação dos resultados,
+buscas salvas, exportação (CSV/JSON) e reconhecimento de **sinônimos de skills**
+(ex.: `js`→`javascript`, `k8s`→`kubernetes`).
 
 Não precisa configurar nada antes — o currículo é enviado pela própria interface.
 

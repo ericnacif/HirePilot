@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from cv_apply.profile import CandidateProfile, JobPosting
-from cv_apply.skills_dict import compile_skill_regex, find_skills
+from cv_apply.skills_dict import find_skills, text_has_skill
 
 
 @dataclass
@@ -55,7 +55,7 @@ def _keyword_coverage(
     missing: list[str] = []
     for kw in job_keywords:
         in_skills = kw.lower() in profile_skills
-        in_text = compile_skill_regex(kw).search(profile_text) is not None
+        in_text = text_has_skill(kw, profile_text)
         if in_skills or in_text:
             present.append(kw)
         else:

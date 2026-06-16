@@ -2,7 +2,7 @@
 
 import time
 
-from cv_apply.webapp import SessionStore, _format_posted, app
+from cv_apply.webapp import SessionData, SessionStore, _format_posted, app
 
 
 def test_format_posted_iso_e_rotulos():
@@ -48,3 +48,27 @@ def test_export_json_vazio():
     assert resp.status_code == 200
     assert resp.mimetype == "application/json"
     assert resp.get_json() == []
+
+
+def test_rate_ok_janela_deslizante():
+    sess = SessionData()
+    assert sess.rate_ok("b", max_per_window=2, window=60) is True
+    assert sess.rate_ok("b", max_per_window=2, window=60) is True
+    # terceiro hit dentro da janela estoura o limite
+    assert sess.rate_ok("b", max_per_window=2, window=60) is False
+    # janela "expirada" (0s) zera a contagem
+    assert sess.rate_ok("b", max_per_window=2, window=0) is True
+
+
+def test_api_404_json_amigavel():
+    client = app.test_client()
+    resp = client.get("/api/nao-existe")
+    assert resp.status_code == 404
+    assert resp.get_json()["error"]
+
+
+def test_rate_limit_global_bloqueia_apos_muitas_chamadas():
+    client = app.test_client()
+    # estoura o limite global de requisições à API numa única sessão
+    statuses = [client.post("/api/search", json={}).status_code for _ in range(40)]
+    assert 429 in statuses

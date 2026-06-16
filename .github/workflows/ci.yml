@@ -26,10 +26,18 @@ jobs:
       - name: Install dev dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install ruff pytest pydantic jinja2 python-dotenv httpx flask
+          pip install ruff pytest pydantic jinja2 python-dotenv httpx flask pdfplumber python-docx
 
       - name: Lint (ruff)
         run: ruff check .
 
       - name: Run tests
         run: python -m pytest -q
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t vagamatch:ci .

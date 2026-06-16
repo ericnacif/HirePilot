@@ -80,6 +80,40 @@ JOB_TITLE_PATTERNS: list[str] = [
 ]
 
 
+# Sinônimos / variações → skill canônica do dicionário. Permite reconhecer
+# "js" como "javascript", "k8s" como "kubernetes", etc.
+SKILL_SYNONYMS: dict[str, str] = {
+    "js": "javascript",
+    "ts": "typescript",
+    "k8s": "kubernetes",
+    "py": "python",
+    "golang": "go",
+    "node": "node.js",
+    "nodejs": "node.js",
+    "reactjs": "react",
+    "react.js": "react",
+    "vuejs": "vue",
+    "vue.js": "vue",
+    "postgres": "postgresql",
+    "postgre": "postgresql",
+    "k8": "kubernetes",
+    "tf": "terraform",
+    "gha": "github actions",
+    "gcp": "google cloud",
+    "ml": "machine learning",
+    "dl": "deep learning",
+    "ci cd": "ci/cd",
+    "cicd": "ci/cd",
+    "restful": "rest",
+    "rest apis": "rest api",
+    "dotnet": ".net",
+    ".net core": ".net",
+    "next": "next.js",
+    "nextjs": "next.js",
+    "tailwindcss": "tailwind css",
+}
+
+
 # Borda própria para tokens de skill. ``\b`` do regex falha em skills que
 # começam/terminam com símbolos (ex.: "c++", "c#", ".net") — esses nunca eram
 # detectados. As bordas abaixo:
@@ -109,13 +143,43 @@ def compile_skill_regex(skill: str) -> re.Pattern[str]:
 
 
 # Pré-compilado uma vez: usado em extração de currículo, matching e ATS.
+# Inclui as skills do dicionário e os sinônimos (estes mapeiam p/ a forma canônica).
 SKILL_REGEXES: list[tuple[str, re.Pattern[str]]] = [
     (skill, compile_skill_regex(skill)) for skill in SKILLS_DICTIONARY
+]
+_SYNONYM_REGEXES: list[tuple[str, re.Pattern[str]]] = [
+    (canonical, compile_skill_regex(syn)) for syn, canonical in SKILL_SYNONYMS.items()
 ]
 
 
 def find_skills(text: str) -> list[str]:
-    """Retorna as skills do dicionário presentes em ``text`` (ordenadas)."""
+    """Retorna as skills do dicionário presentes em ``text`` (ordenadas).
+
+    Reconhece também sinônimos (ex.: "js" → "javascript"), sempre devolvendo a
+    forma canônica do dicionário.
+    """
     lowered = (text or "").lower()
-    found = [skill for skill, rx in SKILL_REGEXES if rx.search(lowered)]
-    return sorted(set(found), key=str.lower)
+    found = {skill for skill, rx in SKILL_REGEXES if rx.search(lowered)}
+    for canonical, rx in _SYNONYM_REGEXES:
+        if rx.search(lowered):
+            found.add(canonical)
+    # Colapsa variantes que também existem no dicionário (golang→go, postgres→postgresql)
+    canonical_found = {SKILL_SYNONYMS.get(s, s) for s in found}
+    return sorted(canonical_found, key=str.lower)
+
+
+# Skill canônica → lista de sinônimos que apontam para ela.
+_CANONICAL_TO_SYNONYMS: dict[str, list[str]] = {}
+for _syn, _canon in SKILL_SYNONYMS.items():
+    _CANONICAL_TO_SYNONYMS.setdefault(_canon, []).append(_syn)
+
+
+def text_has_skill(skill: str, text: str) -> bool:
+    """True se ``text`` contém a skill (forma canônica OU qualquer sinônimo dela)."""
+    lowered = (text or "").lower()
+    if compile_skill_regex(skill).search(lowered):
+        return True
+    return any(
+        compile_skill_regex(syn).search(lowered)
+        for syn in _CANONICAL_TO_SYNONYMS.get(skill.lower(), [])
+    )

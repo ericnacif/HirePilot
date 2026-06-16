@@ -26,8 +26,26 @@ function lsSet(key, val) {
   try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {}
 }
 
-let FAVORITES = new Set(lsGet(FAVORITES_KEY, []));
-let APPLIED = new Set(lsGet(APPLIED_KEY, []));
+/* Favoritos e candidaturas guardam os detalhes da vaga (não só o id),
+   para alimentar o painel/histórico mesmo após nova busca. */
+function _toMap(raw) {
+  if (Array.isArray(raw)) { const m = {}; raw.forEach(id => { m[id] = { id }; }); return m; }
+  return raw && typeof raw === "object" ? raw : {};
+}
+let FAVORITES = _toMap(lsGet(FAVORITES_KEY, {}));
+let APPLIED = _toMap(lsGet(APPLIED_KEY, {}));
+let COMPARE = new Set();
+
+function isFav(id) { return !!FAVORITES[id]; }
+function isApplied(id) { return !!APPLIED[id]; }
+function jobMeta(j) {
+  return {
+    id: j.id, title: j.title, company: j.company, url: j.url,
+    score: j.score, ats: j.ats, source: j.source, location: j.location,
+  };
+}
+function saveFav() { lsSet(FAVORITES_KEY, FAVORITES); }
+function saveApplied() { lsSet(APPLIED_KEY, APPLIED); }
 
 function toast(msg, type) {
   const t = document.createElement("div");
@@ -100,6 +118,7 @@ function showProfile() {
   $("uploadView").classList.add("hidden");
   $("appView").classList.remove("hidden");
   $("resetBtn").classList.remove("hidden");
+  $("dashBtn").classList.remove("hidden");
   $("pName").textContent = PROFILE.name || "Perfil carregado";
   $("pInfo").textContent = profileInfo();
   const v = PROFILE.format_score == null ? 0 : PROFILE.format_score;
@@ -125,6 +144,7 @@ function resetProfile() {
   $("appView").classList.add("hidden");
   $("uploadView").classList.remove("hidden");
   $("resetBtn").classList.add("hidden");
+  $("dashBtn").classList.add("hidden");
   $("fileName").textContent = "";
   $("file").value = "";
 }
@@ -227,8 +247,10 @@ async function search() {
     const d = await postJSON("/api/search", payload);
     if (d.error) { $("results").innerHTML = '<div class="empty"><div class="big">⚠️</div>' + esc(d.error) + "</div>"; }
     else {
-      LAST_JOBS = (d.jobs || []).map(j => ({ ...j, applied: j.applied || APPLIED.has(j.id) }));
+      LAST_JOBS = (d.jobs || []).map(j => ({ ...j, applied: j.applied || isApplied(j.id) }));
       CURRENT_PAGE = 1;
+      COMPARE.clear();
+      updateCompareBar();
       renderResults();
     }
   } catch (e) {
@@ -240,7 +262,7 @@ async function search() {
 
 function visibleJobs() {
   let jobs = LAST_JOBS.slice();
-  if (ONLY_FAVORITES) jobs = jobs.filter(j => FAVORITES.has(j.id));
+  if (ONLY_FAVORITES) jobs = jobs.filter(j => isFav(j.id));
   const cmp = {
     score: (a, b) => b.score - a.score,
     ats: (a, b) => (b.ats || 0) - (a.ats || 0),
@@ -268,7 +290,7 @@ function renderResults() {
 }
 
 function toolbar(total) {
-  const favCount = LAST_JOBS.filter(j => FAVORITES.has(j.id)).length;
+  const favCount = LAST_JOBS.filter(j => isFav(j.id)).length;
   return '<div class="count">'
     + '<span>' + total + ' vaga(s)</span>'
     + '<span class="toolbar">'
@@ -289,7 +311,8 @@ function jobCard(j) {
   const pills = [];
   if (j.easy_apply) pills.push('<span class="pill easy">⚡ Easy Apply</span>');
   if (j.posted_at) pills.push('<span class="pill">' + esc(j.posted_at) + "</span>");
-  const fav = FAVORITES.has(j.id);
+  const fav = isFav(j.id);
+  const cmp = COMPARE.has(j.id);
   return '<div class="card' + (j.applied ? " applied" : "") + '" id="card-' + j.id + '">'
     + '<div class="card-top"><div>'
     + '<div class="src">' + esc(j.source) + "</div>"
@@ -311,6 +334,7 @@ function jobCard(j) {
     + '<button class="btn" onclick="tailor(\'' + j.id + "')\">Adaptar currículo</button>"
     + '<button class="btn" onclick="cover(\'' + j.id + "')\">Carta</button>"
     + '<button class="btn ghost" onclick="toggleApplied(\'' + j.id + "')\">" + (j.applied ? "Desmarcar" : "Já apliquei") + "</button>"
+    + '<label class="cmp-check"><input type="checkbox" ' + (cmp ? "checked" : "") + " onchange=\"toggleCompare('" + j.id + "')\"> comparar</label>"
     + "</div></div>";
 }
 
@@ -334,8 +358,13 @@ function exportJobs(fmt) {
 
 /* ---------- favorites ---------- */
 function toggleFavorite(id) {
-  if (FAVORITES.has(id)) FAVORITES.delete(id); else FAVORITES.add(id);
-  lsSet(FAVORITES_KEY, Array.from(FAVORITES));
+  if (isFav(id)) {
+    delete FAVORITES[id];
+  } else {
+    const job = LAST_JOBS.find(j => j.id === id);
+    FAVORITES[id] = job ? jobMeta(job) : { id };
+  }
+  saveFav();
   renderResults();
 }
 
@@ -402,16 +431,120 @@ async function cover(id, lang) {
 
 /* ---------- applied ---------- */
 async function markApplied(id, val) {
-  if (val) APPLIED.add(id); else APPLIED.delete(id);
-  lsSet(APPLIED_KEY, Array.from(APPLIED));
   const job = LAST_JOBS.find(j => j.id === id);
+  if (val) {
+    const meta = job ? jobMeta(job) : { id };
+    meta.applied_at = Date.now();
+    APPLIED[id] = meta;
+  } else {
+    delete APPLIED[id];
+  }
+  saveApplied();
   if (job) job.applied = val;
   try { await postJSON("/api/applied", { id, applied: val }); } catch (e) {}
 }
 
 async function toggleApplied(id) {
   const job = LAST_JOBS.find(j => j.id === id);
-  const isApplied = job ? job.applied : false;
-  await markApplied(id, !isApplied);
+  const wasApplied = job ? job.applied : isApplied(id);
+  await markApplied(id, !wasApplied);
+  renderResults();
+}
+
+/* ---------- comparar vagas ---------- */
+function toggleCompare(id) {
+  if (COMPARE.has(id)) {
+    COMPARE.delete(id);
+  } else {
+    if (COMPARE.size >= 3) { toast("Compare no máximo 3 vagas.", "warn"); renderResults(); return; }
+    COMPARE.add(id);
+  }
+  updateCompareBar();
+}
+
+function updateCompareBar() {
+  const bar = $("compareBar");
+  if (!bar) return;
+  if (COMPARE.size === 0) { bar.classList.add("hidden"); return; }
+  bar.classList.remove("hidden");
+  bar.querySelector(".cmp-count").textContent = COMPARE.size + " selecionada(s)";
+}
+
+function clearCompare() {
+  COMPARE.clear();
+  updateCompareBar();
+  renderResults();
+}
+
+function openCompare() {
+  const jobs = Array.from(COMPARE).map(id => LAST_JOBS.find(j => j.id === id)).filter(Boolean);
+  if (jobs.length < 2) { toast("Selecione ao menos 2 vagas.", "warn"); return; }
+  const rows = [
+    ["Vaga", j => "<b>" + esc(j.title) + "</b>"],
+    ["Empresa", j => esc(j.company || "—")],
+    ["Local", j => esc(j.location || "—")],
+    ["Fonte", j => esc(j.source || "—")],
+    ["Score", j => '<span class="score ' + scoreClass(j.score) + '">' + Math.round(j.score) + "</span>"],
+    ["ATS", j => Math.round(j.ats || 0) + "%"],
+    ["Skills", j => (j.skills || []).map(s => '<span class="tag">' + esc(s) + "</span>").join("") || "—"],
+    ["", j => '<a class="btn small primary" href="' + j.url + '" target="_blank" rel="noopener">Abrir</a>'],
+  ];
+  let html = '<div class="cmp-table"><table><tbody>';
+  for (const [label, fn] of rows) {
+    html += "<tr><th>" + esc(label) + "</th>" + jobs.map(j => "<td>" + fn(j) + "</td>").join("") + "</tr>";
+  }
+  html += "</tbody></table></div>";
+  openModal("Comparar vagas", html);
+}
+
+/* ---------- painel / histórico ---------- */
+function openDashboard() {
+  const applied = Object.values(APPLIED);
+  const favs = Object.values(FAVORITES);
+  const scores = applied.map(a => a.score).filter(s => typeof s === "number");
+  const avg = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
+  const bySource = {};
+  applied.forEach(a => { bySource[a.source || "—"] = (bySource[a.source || "—"] || 0) + 1; });
+
+  let html = '<div class="stats">'
+    + statCard("📮", applied.length, "Candidaturas")
+    + statCard("★", favs.length, "Favoritos")
+    + statCard("🎯", avg, "Score médio")
+    + "</div>";
+
+  const srcKeys = Object.keys(bySource);
+  if (srcKeys.length) {
+    html += '<h4>Por fonte</h4><div class="tags">'
+      + srcKeys.map(k => '<span class="tag">' + esc(k) + ": " + bySource[k] + "</span>").join("") + "</div>";
+  }
+
+  const sorted = applied.slice().sort((a, b) => (b.applied_at || 0) - (a.applied_at || 0));
+  html += "<h4>Histórico de candidaturas</h4>";
+  if (!sorted.length) {
+    html += '<p class="muted">Nenhuma candidatura registrada ainda.</p>';
+  } else {
+    html += '<div class="hist">' + sorted.map(a => {
+      const when = a.applied_at ? new Date(a.applied_at).toLocaleDateString() : "";
+      return '<div class="hist-row"><div><b>' + esc(a.title || a.id) + "</b><div class=\"muted\">"
+        + esc(a.company || "") + (a.location ? " · " + esc(a.location) : "") + "</div></div>"
+        + '<div class="hist-meta"><span class="muted">' + esc(when) + "</span>"
+        + (a.url ? ' <a class="btn small" href="' + a.url + '" target="_blank" rel="noopener">Abrir</a>' : "")
+        + ' <button class="btn small ghost" onclick="removeApplied(\'' + a.id + "')\">Remover</button></div></div>";
+    }).join("") + "</div>";
+  }
+  openModal("Painel", html);
+}
+
+function statCard(icon, value, label) {
+  return '<div class="stat"><div class="stat-icon">' + icon + '</div><div class="stat-val">'
+    + value + '</div><div class="stat-label">' + esc(label) + "</div></div>";
+}
+
+function removeApplied(id) {
+  delete APPLIED[id];
+  saveApplied();
+  const job = LAST_JOBS.find(j => j.id === id);
+  if (job) job.applied = false;
+  openDashboard();
   renderResults();
 }

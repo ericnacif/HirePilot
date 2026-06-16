@@ -1,0 +1,13 @@
+# Dependências mínimas para rodar a interface web (sem Playwright/torch).
+# Mantém a imagem Docker leve: fontes via API (Gupy, Remotive, RemoteOK) e
+# matching por palavras-chave funcionam normalmente. As fontes LinkedIn/InfoJobs
+# (que usam navegador) e o matching semântico ficam desativados neste modo.
+pdfplumber>=0.10.0
+python-docx>=1.1.0
+rich>=13.7.0
+pydantic>=2.5.0
+python-dotenv>=1.0.0
+jinja2>=3.1.0
+httpx>=0.25.0
+flask>=3.0.0
+gunicorn>=22.0.0

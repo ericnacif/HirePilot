@@ -38,13 +38,20 @@ from cv_apply.tailor import tailor_resume_markdown
 
 logger = logging.getLogger(__name__)
 
+MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "8"))
+
 app = Flask(__name__)
 app.secret_key = os.environ.get("CV_APPLY_SECRET", os.urandom(24).hex())
+app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
 
 ALLOWED_EXT = {".pdf", ".docx", ".doc"}
 VALID_SENIORITY = {"estagiário", "júnior", "pleno", "sênior"}
 SESSION_TTL_SECONDS = 2 * 60 * 60  # 2h sem uso → expira
 UPLOAD_RETENTION_SECONDS = int(os.getenv("UPLOAD_RETENTION_HOURS", "24")) * 60 * 60
+# Rate limit simples: janela deslizante por sessão
+RATE_LIMIT_WINDOW = 60  # segundos
+RATE_LIMIT_MAX = int(os.getenv("RATE_LIMIT_MAX", "30"))  # requisições/janela
+SEARCH_RATE_MAX = int(os.getenv("SEARCH_RATE_MAX", "8"))  # buscas/janela
 MAX_SESSIONS = 200
 
 
@@ -59,7 +66,16 @@ class SessionData:
     source_by_job: dict[str, str] = field(default_factory=dict)
     applied: set[str] = field(default_factory=set)
     last_results: list[dict] = field(default_factory=list)
+    hits: dict[str, list[float]] = field(default_factory=dict)
     last_seen: float = field(default_factory=time.time)
+
+    def rate_ok(self, bucket: str, max_per_window: int, window: float) -> bool:
+        """Janela deslizante: registra o hit e diz se está dentro do limite."""
+        now = time.time()
+        recent = [t for t in self.hits.get(bucket, []) if now - t < window]
+        recent.append(now)
+        self.hits[bucket] = recent
+        return len(recent) <= max_per_window
 
 
 def _delete_resume_file(path: Path | None) -> None:
@@ -203,6 +219,38 @@ def require_job(fn: Callable) -> Callable:
 
 
 # --------------------------------------------------------------------------- #
+# Erros e rate limiting                                                         #
+# --------------------------------------------------------------------------- #
+@app.errorhandler(413)
+def _too_large(_err):
+    return jsonify({"error": f"Arquivo muito grande. Limite de {MAX_UPLOAD_MB} MB."}), 413
+
+
+@app.errorhandler(404)
+def _not_found(_err):
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "Recurso não encontrado."}), 404
+    return jsonify({"error": "Página não encontrada."}), 404
+
+
+@app.errorhandler(500)
+def _server_error(_err):
+    logger.exception("Erro interno")
+    return jsonify({"error": "Erro interno. Tente novamente."}), 500
+
+
+@app.before_request
+def _global_rate_limit():
+    """Limita a taxa global de chamadas à API por sessão."""
+    if not request.path.startswith("/api/"):
+        return None
+    sess = store.get(_sid())
+    if not sess.rate_ok("api", RATE_LIMIT_MAX, RATE_LIMIT_WINDOW):
+        return jsonify({"error": "Muitas requisições. Aguarde um instante."}), 429
+    return None
+
+
+# --------------------------------------------------------------------------- #
 # Rotas                                                                        #
 # --------------------------------------------------------------------------- #
 @app.route("/")
@@ -254,6 +302,8 @@ def api_upload():
 @app.route("/api/search", methods=["POST"])
 @require_profile
 def api_search(sess: SessionData):
+    if not sess.rate_ok("search", SEARCH_RATE_MAX, RATE_LIMIT_WINDOW):
+        return jsonify({"error": "Muitas buscas seguidas. Aguarde alguns segundos."}), 429
     data = request.get_json(silent=True) or {}
     settings = get_settings()
     settings.search_keywords = data.get("keywords") or "desenvolvedor"
