@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(SPECPATH)))
 
-from packaging.pyinstaller_common import COMMON_EXCLUDES, app_datas, cv_apply_hiddenimports
+from build_support.pyinstaller_common import COMMON_EXCLUDES, app_datas, cv_apply_hiddenimports
 
 block_cipher = None
 

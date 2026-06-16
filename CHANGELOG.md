@@ -2,6 +2,11 @@
 
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.1.5] - 2026-06-16
+
+### Corrigido
+- Release Windows: pasta `packaging/` local conflitava com a lib PyPI `packaging` exigida pelo PyInstaller (renomeada para `build_support/`)
+
 ## [1.1.4] - 2026-06-16
 
 ### Corrigido
@@ -12,7 +17,7 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/).
 
 ### Alterado
 - Specs PyInstaller renomeados para `hirepilot.spec` / `hirepilot-full.spec`
-- Módulo compartilhado `packaging/pyinstaller_common.py`
+- Módulo compartilhado `build_support/pyinstaller_common.py`
 - Release workflow roda lint e testes antes do build Windows
 
 ## [1.1.3] - 2026-06-16
