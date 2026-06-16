@@ -47,7 +47,7 @@ vagamatch = "cv_apply.cli:main"
 include = ["cv_apply*"]
 
 [tool.setuptools.package-data]
-cv_apply = ["templates/*.html", "static/*", "static/logo.svg", "static/icon.ico", "static/icon.png"]
+cv_apply = ["templates/*.html", "static/*", "static/icon.ico", "static/icon.png"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -31,6 +31,7 @@
   --shadow: 0 18px 50px -12px rgba(0, 0, 0, .55);
   --shadow-sm: 0 6px 18px -6px rgba(0, 0, 0, .45);
   --grad: linear-gradient(135deg, var(--hp-blue), var(--hp-blue-light));
+  --grad-brand: linear-gradient(135deg, #22D3EE 0%, #5D8CFF 48%, #8B5CF6 100%);
   --grad-soft: linear-gradient(135deg, rgba(93, 140, 255, .18), rgba(93, 140, 255, .06));
   --ring-track: rgba(246, 248, 252, .1);
   --accent-rgb: 93, 140, 255;
@@ -98,20 +99,11 @@ header {
   backdrop-filter: blur(16px) saturate(140%);
   display: flex; align-items: center; gap: 14px;
 }
-.brand { display: flex; align-items: center; gap: 12px; }
-.brand-text { display: flex; flex-direction: column; line-height: 1.1; }
-.logo {
-  width: 40px; height: 40px; border-radius: 12px; flex-shrink: 0;
-  display: grid; place-items: center;
-  background: var(--grad-soft); border: 1px solid var(--border-strong);
-  box-shadow: var(--shadow-sm); overflow: hidden;
-}
-.logo img, .logo svg { width: 28px; height: 28px; display: block; }
-header h1 {
-  font-family: var(--font-display);
-  font-size: 20px; margin: 0; font-weight: 800; letter-spacing: -.03em;
-  background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent;
-}
+.brand { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.brand-wordmark { height: 38px; width: auto; display: block; }
+.brand-wordmark--light { display: none; }
+[data-theme="light"] .brand-wordmark--light { display: block; }
+[data-theme="light"] .brand-wordmark--dark { display: none; }
 header .sub { color: var(--muted); font-size: 12px; font-weight: 500; }
 header .spacer { flex: 1; }
 .bi { font-size: 13px; }
@@ -540,11 +532,7 @@ dialog .row { padding: 14px 22px; border-top: 1px solid var(--border); display: 
   display: flex; align-items: center; gap: 10px; padding: 4px 8px 16px;
   border-bottom: 1px solid var(--border); margin-bottom: 12px;
 }
-.sb-brand img { width: 32px; height: 32px; }
-.sb-brand span {
-  font-family: var(--font-display); font-weight: 800; font-size: 15px; letter-spacing: -.02em;
-  background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent;
-}
+.sb-brand .sb-icon { width: 36px; height: auto; display: block; }
 .sb-nav { display: flex; flex-direction: column; gap: 4px; }
 .sb-item {
   display: flex; align-items: center; gap: 10px; width: 100%;

@@ -16,6 +16,7 @@ import time
 import urllib.error
 import urllib.request
 import webbrowser
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -27,29 +28,33 @@ _WINDOW_TITLE = "HirePilot"
 _WINDOW_SIZE = (1280, 860)
 _WINDOW_MIN = (960, 640)
 
-_SPLASH_HTML = """<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">
+
+def _static_b64(name: str) -> str:
+    import base64
+
+    path = Path(__file__).resolve().parent / "static" / name
+    encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+    return f"data:image/png;base64,{encoded}"
+
+
+def _splash_html() -> str:
+    wordmark = _static_b64("logo-wordmark-light.png")
+    return f"""<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">
 <style>
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{height:100vh;display:flex;align-items:center;justify-content:center;
-    font-family:Segoe UI,system-ui,sans-serif;background:#F6F8FC;color:#1A2030}
-  .box{text-align:center;padding:28px}
-  .logo{width:58px;height:58px;margin:0 auto 16px;border-radius:16px;
-    background:linear-gradient(145deg,#fff,#F6F8FC);border:1px solid rgba(93,140,255,.2);
-    box-shadow:0 10px 28px rgba(93,140,255,.18);display:flex;align-items:flex-end;justify-content:center;gap:4px;padding:0 0 14px;
-    animation:pulse 1.4s ease-in-out infinite}
-  .logo i{display:block;width:5px;border-radius:99px;background:linear-gradient(180deg,#5D8CFF,#8FB0FF)}
-  .logo i:nth-child(1){height:14px;opacity:.45}
-  .logo i:nth-child(2){height:20px;opacity:.7}
-  .logo i:nth-child(3){height:26px}
-  h1{font-size:22px;font-weight:700;margin-bottom:6px;color:#1A2030}
-  p{font-size:13px;color:#64748b;margin-bottom:18px}
-  .bar{width:200px;height:5px;border-radius:99px;background:rgba(93,140,255,.15);margin:0 auto;overflow:hidden}
-  .bar i{display:block;height:100%;width:40%;background:linear-gradient(90deg,#5D8CFF,#8FB0FF);
-    animation:slide 1s ease-in-out infinite}
-  @keyframes slide{0%{transform:translateX(-100%)}100%{transform:translateX(350%)}}
-  @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
-</style></head><body><div class="box"><div class="logo"><i></i><i></i><i></i></div>
-<h1>HirePilot</h1><p id="msg">Iniciando…</p><div class="bar"><i></i></div></div></body></html>"""
+  *{{box-sizing:border-box;margin:0;padding:0}}
+  body{{height:100vh;display:flex;align-items:center;justify-content:center;
+    font-family:Segoe UI,system-ui,sans-serif;background:#F6F8FC;color:#1A2030}}
+  .box{{text-align:center;padding:28px}}
+  .wordmark{{height:46px;width:auto;margin:0 auto 18px;display:block;animation:pulse 1.4s ease-in-out infinite}}
+  p{{font-size:13px;color:#64748b;margin-bottom:18px}}
+  .bar{{width:200px;height:5px;border-radius:99px;background:rgba(93,140,255,.15);margin:0 auto;overflow:hidden}}
+  .bar i{{display:block;height:100%;width:40%;background:linear-gradient(90deg,#22D3EE,#5D8CFF,#8B5CF6);
+    animation:slide 1s ease-in-out infinite}}
+  @keyframes slide{{0%{{transform:translateX(-100%)}}100%{{transform:translateX(350%)}}}}
+  @keyframes pulse{{0%,100%{{transform:scale(1)}}50%{{transform:scale(1.04)}}}}
+</style></head><body><div class="box">
+<img class="wordmark" src="{wordmark}" alt="HirePilot">
+<p id="msg">Iniciando…</p><div class="bar"><i></i></div></div></body></html>"""
 
 
 def _is_full_variant() -> bool:
@@ -155,7 +160,7 @@ def _run_native_window(url: str) -> None:
 
     window = webview.create_window(
         _WINDOW_TITLE,
-        html=_SPLASH_HTML,
+        html=_splash_html(),
         width=420,
         height=300,
         resizable=True,

@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#F6F8FC">
+<link rel="icon" href="{{ url_for('static', filename='logo.png') }}" type="image/png">
 <title>HirePilot — seu copiloto inteligente de vagas</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -14,13 +15,9 @@
 <div class="bg-orbs" aria-hidden="true"><span class="orb orb-1"></span><span class="orb orb-2"></span><span class="orb orb-3"></span></div>
 <header>
   <div class="brand">
-    <div class="logo" aria-hidden="true">
-      <img src="{{ url_for('static', filename='logo.svg') }}" alt="" width="32" height="32">
-    </div>
-    <div class="brand-text">
-      <h1>HirePilot</h1>
-      <span class="sub">Sua jornada. Nossa inteligência.</span>
-    </div>
+    <img class="brand-wordmark brand-wordmark--dark" src="{{ url_for('static', filename='logo-wordmark.png') }}" alt="HirePilot" height="38">
+    <img class="brand-wordmark brand-wordmark--light" src="{{ url_for('static', filename='logo-wordmark-light.png') }}" alt="HirePilot" height="38">
+    <span class="sub">Sua jornada. Nossa inteligência.</span>
   </div>
   <span class="spacer"></span>
   <button id="dashBtn" class="btn small ghost hidden" onclick="openDashboard()" aria-label="Abrir painel"><span class="bi">📊</span> Painel</button>
@@ -54,8 +51,7 @@
     <div class="app-shell">
       <aside class="sidebar">
         <div class="sb-brand">
-          <img src="{{ url_for('static', filename='logo.svg') }}" alt="">
-          <span>HirePilot</span>
+          <img src="{{ url_for('static', filename='logo.png') }}" alt="" class="sb-icon">
         </div>
         <nav class="sb-nav">
           <button type="button" class="sb-item" onclick="openDashboard()"><span class="sb-ic">📊</span> Dashboard</button>
