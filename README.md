@@ -160,9 +160,15 @@ Abre no navegador uma interface (VagaMatch) que **qualquer pessoa** pode usar �
 6. Em cada vaga: **Aplicar**, **Análise ATS** (cobertura + palavras faltando), **Adaptar currículo**, **Carta** e **Já apliquei** (acompanhamento)
 7. **Comparar até 3 vagas** lado a lado e abrir o **Painel** com estatísticas (candidaturas, score médio, favoritos) e histórico
 
-Outros recursos da interface: tema claro/escuro, paginação e ordenação dos resultados,
+Outros recursos da interface: **seletor de setor/área** (com palavras-chave opcionais)
+que sugere a área a partir do currículo e ainda **prioriza no ranqueamento** as vagas
+com skills daquela área; **status por fonte** (quantas vagas cada plataforma retornou)
+e estado vazio inteligente; tema claro/escuro, paginação e ordenação dos resultados,
 buscas salvas, exportação (CSV/JSON) e reconhecimento de **sinônimos de skills**
 (ex.: `js`→`javascript`, `k8s`→`kubernetes`).
+
+> Ao rodar `vagamatch web`, se a porta 5000 já estiver ocupada por um servidor
+> anterior, ela é liberada automaticamente (use `--keep-port` para desativar).
 
 Não precisa configurar nada antes — o currículo é enviado pela própria interface.
 

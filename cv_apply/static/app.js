@@ -2,6 +2,7 @@
 
 let PROFILE = null;
 let LAST_JOBS = [];
+let LAST_SOURCES = [];
 let CURRENT_PAGE = 1;
 const PAGE_SIZE = 10;
 let SORT_KEY = "score";
@@ -126,7 +127,40 @@ function showProfile() {
   $("ringv").textContent = PROFILE.format_score == null ? "--" : v;
   $("seniority").value = PROFILE.seniority || "";
   restoreFilters();
+  if (!$("sector").value) suggestSector();
   renderSavedSearches();
+}
+
+/* Heurística: sugere um setor a partir do cargo/skills detectados no currículo. */
+const SECTOR_HINTS = [
+  ["tec_dados", ["cientista de dados", "engenheiro de dados", "analista de dados", "data scientist", "data engineer", "bi", "power bi", "etl"]],
+  ["tec_devops", ["devops", "sre", "infraestrutura", "cloud", "kubernetes", "terraform"]],
+  ["tec_qa", ["qa", "quality assurance", "analista de testes", "tester"]],
+  ["tec_seguranca", ["segurança da informação", "cybersecurity", "pentest", "soc"]],
+  ["tec_suporte", ["suporte", "help desk", "técnico de ti", "service desk"]],
+  ["tec_dev", ["desenvolvedor", "developer", "programador", "engenheiro de software", "full stack", "backend", "frontend", "software"]],
+  ["design", ["designer", "ux", "ui", "product design"]],
+  ["produto", ["product manager", "product owner", "gerente de produto"]],
+  ["marketing", ["marketing", "growth", "mídias sociais", "seo"]],
+  ["vendas", ["vendas", "comercial", "executivo de contas", "sdr"]],
+  ["rh", ["recursos humanos", "recrutamento", "departamento pessoal"]],
+  ["financeiro", ["financeiro", "controladoria", "contas a pagar"]],
+  ["fiscal", ["fiscal", "tributário"]],
+  ["contabil", ["contábil", "contabilidade", "contador"]],
+  ["juridico", ["jurídico", "advogado", "direito"]],
+  ["logistica", ["logística", "supply chain", "estoque"]],
+];
+
+function suggestSector() {
+  const hay = ((PROFILE.job_hint || "") + " " + (PROFILE.skills || []).join(" ")).toLowerCase();
+  if (!hay.trim()) return;
+  for (const [id, terms] of SECTOR_HINTS) {
+    if (terms.some(t => hay.includes(t))) {
+      $("sector").value = id;
+      saveFilters();
+      return;
+    }
+  }
 }
 
 async function saveSeniority() {
@@ -290,6 +324,7 @@ async function search() {
     if (d.error) { $("results").innerHTML = '<div class="empty"><div class="big">⚠️</div>' + esc(d.error) + "</div>"; }
     else {
       LAST_JOBS = (d.jobs || []).map(j => ({ ...j, applied: j.applied || isApplied(j.id) }));
+      LAST_SOURCES = d.sources || [];
       CURRENT_PAGE = 1;
       COMPARE.clear();
       updateCompareBar();
@@ -314,10 +349,28 @@ function visibleJobs() {
   return jobs;
 }
 
+const SOURCE_LABELS = {
+  gupy: "Gupy", remotive: "Remotive", remoteok: "RemoteOK",
+  infojobs: "InfoJobs", linkedin: "LinkedIn",
+};
+
+function sourcesStrip() {
+  if (!LAST_SOURCES.length) return "";
+  const chips = LAST_SOURCES.map(s => {
+    const label = SOURCE_LABELS[s.source] || s.source;
+    const cls = s.count > 0 ? "ok" : "zero";
+    return '<span class="src-chip ' + cls + '">' + esc(label) + ": " + s.count + "</span>";
+  }).join("");
+  return '<div class="sources-strip">Fontes: ' + chips + "</div>";
+}
+
 function renderResults() {
   const el = $("results");
   const jobs = visibleJobs();
-  if (!LAST_JOBS.length) { el.innerHTML = '<div class="empty"><div class="big">🤷</div>Nenhuma vaga encontrada. Tente outras palavras-chave ou fontes.</div>'; return; }
+  if (!LAST_JOBS.length) {
+    el.innerHTML = sourcesStrip() + smartEmptyState();
+    return;
+  }
   if (!jobs.length) { el.innerHTML = toolbar(0) + '<div class="empty"><div class="big">★</div>Nenhuma vaga favoritada ainda.</div>'; return; }
 
   const pages = Math.max(1, Math.ceil(jobs.length / PAGE_SIZE));
@@ -325,10 +378,22 @@ function renderResults() {
   const start = (CURRENT_PAGE - 1) * PAGE_SIZE;
   const pageJobs = jobs.slice(start, start + PAGE_SIZE);
 
-  let html = toolbar(jobs.length);
+  let html = sourcesStrip() + toolbar(jobs.length);
   for (const j of pageJobs) html += jobCard(j);
   html += pager(pages);
   el.innerHTML = html;
+}
+
+function smartEmptyState() {
+  const responded = LAST_SOURCES.filter(s => s.count > 0).map(s => SOURCE_LABELS[s.source] || s.source);
+  const empty = LAST_SOURCES.filter(s => s.count === 0).map(s => SOURCE_LABELS[s.source] || s.source);
+  let msg = "Nenhuma vaga encontrada.";
+  if (empty.length && LAST_SOURCES.length) {
+    msg = "Nenhuma vaga em: " + empty.join(", ") + ". Tente outro setor, palavras-chave mais amplas ou ajuste os filtros.";
+  }
+  let hint = "";
+  if (responded.length) hint = '<div class="muted" style="margin-top:8px">Outras fontes retornaram resultados: ' + esc(responded.join(", ")) + ".</div>";
+  return '<div class="empty"><div class="big">🤷</div>' + esc(msg) + hint + "</div>";
 }
 
 function toolbar(total) {

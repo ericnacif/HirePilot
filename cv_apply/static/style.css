@@ -303,6 +303,19 @@ dialog .row { padding: 13px 20px; border-top: 1px solid var(--border); display: 
 .hist-meta { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
 .hist .muted { font-size: 12px; }
 
+/* Status das fontes */
+.sources-strip {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+  font-size: 12px; color: var(--muted); margin-bottom: 12px;
+}
+.src-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 9px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--card2);
+}
+.src-chip.ok { color: var(--accent2); border-color: var(--accent2); }
+.src-chip.zero { color: var(--muted); opacity: .75; }
+
 /* Responsive */
 @media (max-width: 880px) {
   .layout { grid-template-columns: 1fr; }

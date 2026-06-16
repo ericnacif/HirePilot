@@ -27,6 +27,13 @@ def test_gupy_keyword_candidates_vazio():
     assert _gupy_keyword_candidates("") == [""]
 
 
+def test_keyword_candidates_alias_e_compartilhado():
+    from cv_apply.sources import _keyword_candidates
+
+    assert _keyword_candidates is _gupy_keyword_candidates
+    assert _keyword_candidates("a b c d") == ["a b c d", "a b", "a"]
+
+
 def test_strip_html():
     assert _strip_html("<p>Olá <b>mundo</b></p>") == "Olá mundo"
     assert _strip_html("") == ""

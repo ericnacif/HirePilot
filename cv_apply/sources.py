@@ -207,11 +207,11 @@ def search_remoteok(
 # --------------------------------------------------------------------------- #
 # Gupy (https://portal.gupy.io) — API pública do portal de empregabilidade
 # --------------------------------------------------------------------------- #
-def _gupy_keyword_candidates(keywords: str) -> list[str]:
-    """A API da Gupy casa o ``jobName`` de forma quase literal, então frases
-    longas (ex.: vindas de um setor) zeram os resultados. Geramos candidatos do
-    mais específico ao mais genérico: frase completa → 2 primeiras palavras →
-    primeira palavra (geralmente o cargo)."""
+def _keyword_candidates(keywords: str) -> list[str]:
+    """Algumas fontes (Gupy, InfoJobs) casam as palavras-chave de forma quase
+    literal, então frases longas (ex.: vindas de um setor) zeram os resultados.
+    Geramos candidatos do mais específico ao mais genérico: frase completa →
+    2 primeiras palavras → primeira palavra (geralmente o cargo)."""
     kw = (keywords or "").strip()
     if not kw:
         return [""]
@@ -228,6 +228,10 @@ def _gupy_keyword_candidates(keywords: str) -> list[str]:
             seen.add(c)
             ordered.append(c)
     return ordered
+
+
+# Alias retrocompatível
+_gupy_keyword_candidates = _keyword_candidates
 
 
 def search_gupy(
@@ -302,7 +306,7 @@ def search_gupy(
     jobs: list[JobPosting] = []
     try:
         with httpx.Client(timeout=30, headers=headers, follow_redirects=True) as c:
-            for candidate in _gupy_keyword_candidates(filters.keywords):
+            for candidate in _keyword_candidates(filters.keywords):
                 jobs = _fetch(c, candidate)
                 if jobs:
                     if candidate != filters.keywords:
@@ -332,55 +336,70 @@ def search_infojobs(
 ) -> list[JobPosting]:
     from playwright.sync_api import sync_playwright
 
-    slug = _slugify_keywords(filters.keywords)
     base = "https://www.infojobs.com.br"
-    url = f"{base}/vagas-de-emprego-{slug}.aspx"
-    jobs: list[JobPosting] = []
 
+    def _scrape(page, keywords: str) -> list[JobPosting]:
+        slug = _slugify_keywords(keywords)
+        page.goto(
+            f"{base}/vagas-de-emprego-{slug}.aspx",
+            wait_until="domcontentloaded",
+            timeout=45000,
+        )
+        page.wait_for_timeout(4000)
+
+        found: list[JobPosting] = []
+        cards = page.locator("div.js_rowCard")
+        count = min(cards.count(), max_jobs)
+        for i in range(count):
+            card = cards.nth(i)
+            try:
+                href = card.get_attribute("data-href") or ""
+                native_id = card.get_attribute("data-id") or href
+                title_loc = card.locator("h2.js_vacancyTitle").first
+                title = title_loc.inner_text(timeout=2000).strip() if title_loc.count() else ""
+                if not title:
+                    continue
+
+                company = ""
+                company_loc = card.locator("a.text-body").first
+                if company_loc.count():
+                    company = company_loc.inner_text(timeout=1500).strip()
+
+                location = ""
+                loc_el = card.locator("div.text-medium, span.text-medium").first
+                if loc_el.count():
+                    location = loc_el.inner_text(timeout=1500).strip().split("\n")[0]
+
+                full_url = href if href.startswith("http") else f"{base}{href}"
+                found.append(
+                    JobPosting(
+                        id=_make_id("infojobs", str(native_id)),
+                        title=title,
+                        company=company or "Empresa não informada",
+                        location=location,
+                        url=full_url,
+                        description="",
+                        easy_apply=False,
+                    )
+                )
+            except Exception as exc:
+                logger.debug("InfoJobs card %d erro: %s", i, exc)
+        return found
+
+    jobs: list[JobPosting] = []
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=settings.headless)
             page = browser.new_page(locale="pt-BR")
-            page.goto(url, wait_until="domcontentloaded", timeout=45000)
-            page.wait_for_timeout(4000)
-
-            cards = page.locator("div.js_rowCard")
-            count = min(cards.count(), max_jobs)
-            for i in range(count):
-                card = cards.nth(i)
-                try:
-                    href = card.get_attribute("data-href") or ""
-                    native_id = card.get_attribute("data-id") or href
-                    title_loc = card.locator("h2.js_vacancyTitle").first
-                    title = title_loc.inner_text(timeout=2000).strip() if title_loc.count() else ""
-                    if not title:
-                        continue
-
-                    company = ""
-                    company_loc = card.locator("a.text-body").first
-                    if company_loc.count():
-                        company = company_loc.inner_text(timeout=1500).strip()
-
-                    location = ""
-                    loc_el = card.locator("div.text-medium, span.text-medium").first
-                    if loc_el.count():
-                        location = loc_el.inner_text(timeout=1500).strip().split("\n")[0]
-
-                    full_url = href if href.startswith("http") else f"{base}{href}"
-                    jobs.append(
-                        JobPosting(
-                            id=_make_id("infojobs", str(native_id)),
-                            title=title,
-                            company=company or "Empresa não informada",
-                            location=location,
-                            url=full_url,
-                            description="",
-                            easy_apply=False,
+            for candidate in _keyword_candidates(filters.keywords):
+                jobs = _scrape(page, candidate)
+                if jobs:
+                    if candidate != filters.keywords:
+                        logger.info(
+                            "InfoJobs: '%s' sem resultados; usando '%s'",
+                            filters.keywords, candidate,
                         )
-                    )
-                except Exception as exc:
-                    logger.debug("InfoJobs card %d erro: %s", i, exc)
-
+                    break
             browser.close()
     except Exception as exc:
         logger.warning("InfoJobs falhou: %s", exc)

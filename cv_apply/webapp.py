@@ -33,6 +33,7 @@ from cv_apply.cover_letter import generate_cover_letter
 from cv_apply.matching import rank_jobs
 from cv_apply.profile import CandidateProfile, JobPosting
 from cv_apply.resume_parser import parse_resume
+from cv_apply.sectors import apply_sector_boost
 from cv_apply.sources import AVAILABLE_SOURCES, dedupe_jobs, run_sources
 from cv_apply.tailor import tailor_resume_markdown
 
@@ -324,13 +325,22 @@ def api_search(sess: SessionData):
         for job in jobs:
             source_by_id[job.id] = src_name
             all_jobs.append(job)
+
+    # Status por fonte (antes da deduplicação) para a interface informar o usuário
+    sources_status = [
+        {"source": name, "count": len(results.get(name, []))}
+        for name in settings.search_sources
+        if name in AVAILABLE_SOURCES
+    ]
+
     if not all_jobs:
-        return jsonify({"jobs": []})
+        return jsonify({"jobs": [], "sources": sources_status})
 
     all_jobs = dedupe_jobs(all_jobs)
     matches = rank_jobs(
         sess.profile, all_jobs, min_score=0, use_semantic=settings.use_semantic_matching
     )
+    matches = apply_sector_boost(matches, data.get("sector", ""))
 
     sess.jobs = {}
     sess.source_by_job = source_by_id
@@ -353,7 +363,7 @@ def api_search(sess: SessionData):
             "applied": m.job.id in sess.applied,
         })
     sess.last_results = out
-    return jsonify({"jobs": out})
+    return jsonify({"jobs": out, "sources": sources_status})
 
 
 @app.route("/api/ats", methods=["POST"])
@@ -440,9 +450,63 @@ def api_applied(sess: SessionData):
     return jsonify({"ok": True, "applied": job_id in sess.applied})
 
 
-def run_server(host: str = "127.0.0.1", port: int = 5000, open_browser: bool = True) -> None:
+def _port_in_use(host: str, port: int) -> bool:
+    import socket
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(0.5)
+        return s.connect_ex((host, port)) == 0
+
+
+def _free_port(host: str, port: int) -> bool:
+    """Tenta encerrar o processo que está ocupando ``port`` (Windows/Unix).
+
+    Evita o problema de "código antigo em cache" quando há um servidor anterior
+    rodando na mesma porta. Retorna True se a porta ficou livre.
+    """
+    import subprocess
+    import sys
+
+    pids: set[str] = set()
+    try:
+        if sys.platform.startswith("win"):
+            out = subprocess.run(
+                ["netstat", "-ano"], capture_output=True, text=True, timeout=5
+            ).stdout
+            for line in out.splitlines():
+                parts = line.split()
+                if len(parts) >= 5 and "LISTENING" in line and parts[1].endswith(f":{port}"):
+                    pids.add(parts[-1])
+            for pid in pids:
+                subprocess.run(["taskkill", "/PID", pid, "/F"], capture_output=True, timeout=5)
+        else:
+            out = subprocess.run(
+                ["lsof", "-ti", f"tcp:{port}"], capture_output=True, text=True, timeout=5
+            ).stdout
+            pids = {p for p in out.split() if p}
+            for pid in pids:
+                subprocess.run(["kill", "-9", pid], capture_output=True, timeout=5)
+    except Exception as exc:
+        logger.warning("Não consegui liberar a porta %d automaticamente: %s", port, exc)
+        return False
+
+    if pids:
+        time.sleep(1.0)
+        logger.info("Porta %d liberada (encerrei: %s)", port, ", ".join(pids))
+    return not _port_in_use(host, port)
+
+
+def run_server(
+    host: str = "127.0.0.1",
+    port: int = 5000,
+    open_browser: bool = True,
+    free_port: bool = True,
+) -> None:
     settings = get_settings()
     _cleanup_stale_uploads(settings.data_dir / "uploads")
+    if free_port and _port_in_use(host, port):
+        logger.info("Porta %d ocupada — tentando liberar (servidor antigo?)...", port)
+        _free_port(host, port)
     url = f"http://{host}:{port}"
     if open_browser:
         threading.Timer(1.2, lambda: webbrowser.open(url)).start()
