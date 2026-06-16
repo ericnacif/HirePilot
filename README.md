@@ -57,7 +57,7 @@ python -m venv .venv
 # Linux/macOS
 source .venv/bin/activate
 
-# Opção A: instalar como pacote (cria o comando `vagamatch` — nome legado do pacote Python)
+# Opção A: instalar como pacote (cria o comando `hirepilot`; `vagamatch` continua como alias)
 pip install -e .
 # Opção B: só as dependências
 pip install -r requirements.txt
@@ -66,7 +66,7 @@ pip install -r requirements.txt
 playwright install chromium
 ```
 
-Com a instalação via `pip install -e .`, você pode usar o comando `vagamatch` no lugar de `python -m cv_apply` (ex.: `vagamatch web`).
+Com a instalação via `pip install -e .`, use `hirepilot` no lugar de `python -m cv_apply` (ex.: `hirepilot web`). O comando `vagamatch` ainda funciona.
 
 ### Docker (rodar com um comando)
 
@@ -141,7 +141,7 @@ pip install -r requirements-web.txt
 python run_app.py
 ```
 
-Para forçar abertura no navegador (debug): `set VAGAMATCH_BROWSER=1` e rode `python run_app.py`.
+Para forçar abertura no navegador (debug): `set HIREPILOT_BROWSER=1` e rode `python run_app.py`.
 
 ### Desenvolvimento
 
@@ -236,7 +236,7 @@ e estado vazio inteligente; tema claro/escuro, paginação e ordenação dos res
 buscas salvas, exportação (CSV/JSON) e reconhecimento de **sinônimos de skills**
 (ex.: `js`→`javascript`, `k8s`→`kubernetes`).
 
-> Ao rodar `vagamatch web`, se a porta 5000 já estiver ocupada por um servidor
+> Ao rodar `hirepilot web`, se a porta 5000 já estiver ocupada por um servidor
 > anterior, ela é liberada automaticamente (use `--keep-port` para desativar).
 
 Não precisa configurar nada antes — o currículo é enviado pela própria interface.

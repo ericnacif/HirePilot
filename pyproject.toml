@@ -3,7 +3,7 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "vagamatch"
+name = "hirepilot"
 version = "1.1.2"
 description = "HirePilot — copiloto inteligente de vagas com análise ATS, matching e interface web."
 readme = "README.md"
@@ -41,7 +41,8 @@ dev = [
 Repository = "https://github.com/ericnacif/HirePilot"
 
 [project.scripts]
-vagamatch = "cv_apply.cli:main"
+hirepilot = "cv_apply.cli:main"
+vagamatch = "cv_apply.cli:main"  # alias legado
 
 [tool.setuptools.packages.find]
 include = ["cv_apply*"]

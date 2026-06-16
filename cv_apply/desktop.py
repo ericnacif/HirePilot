@@ -150,7 +150,7 @@ def _start_flask(host: str, port: int) -> tuple[BaseWSGIServer, threading.Thread
     from cv_apply.webapp import app
 
     server = make_server(host, port, app, threaded=True)
-    thread = threading.Thread(target=server.serve_forever, name="vagamatch-http", daemon=True)
+    thread = threading.Thread(target=server.serve_forever, name="hirepilot-http", daemon=True)
     thread.start()
     return server, thread
 
@@ -261,7 +261,11 @@ def run_launch() -> None:
 
     _start_alert_scheduler(settings)
 
-    use_browser = os.getenv("VAGAMATCH_BROWSER", "").lower() in {"1", "true", "yes"}
+    use_browser = os.getenv("HIREPILOT_BROWSER", os.getenv("VAGAMATCH_BROWSER", "")).lower() in {
+        "1",
+        "true",
+        "yes",
+    }
     try:
         if use_browser:
             _run_browser_fallback(url)
