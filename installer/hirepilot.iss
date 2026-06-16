@@ -3,7 +3,7 @@
 #define MyAppName "HirePilot"
 #define MyAppVersion "1.0.0"
 #define MyAppPublisher "HirePilot"
-#define MyAppURL "https://github.com/ericnacif/vagamatch"
+#define MyAppURL "https://github.com/ericnacif/HirePilot"
 #define MyAppExeName "HirePilot.exe"
 
 [Setup]

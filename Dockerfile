@@ -1,4 +1,4 @@
-# Imagem enxuta para a interface web do VagaMatch.
+# Imagem enxuta para a interface web do HirePilot.
 FROM python:3.12-slim
 
 ENV PYTHONUNBUFFERED=1 \

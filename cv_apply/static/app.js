@@ -1220,7 +1220,7 @@ function showUpdateBanner(url, ver) {
 
 async function checkForUpdates(fallbackUrl) {
   try {
-    const r = await fetch("https://api.github.com/repos/ericnacif/vagamatch/releases/latest");
+    const r = await fetch("https://api.github.com/repos/ericnacif/HirePilot/releases/latest");
     if (!r.ok) return;
     const d = await r.json();
     const latest = (d.tag_name || "").replace(/^v/i, "");
@@ -1240,7 +1240,7 @@ async function loadAppMeta() {
     if (varEl) varEl.textContent = d.variant === "full" ? "· Edição Completa" : "· Edição Leve";
     checkForUpdates(d.release_url);
   } catch (e) {
-    checkForUpdates("https://github.com/ericnacif/vagamatch/releases/latest");
+    checkForUpdates("https://github.com/ericnacif/HirePilot/releases/latest");
   }
 }
 

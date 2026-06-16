@@ -19,7 +19,7 @@ from cv_apply.sources import (
 logger = logging.getLogger(__name__)
 
 _HTTP_HEADERS = {
-    "User-Agent": "HirePilot/1.0 (+https://github.com/ericnacif/vagamatch)",
+    "User-Agent": "HirePilot/1.0 (+https://github.com/ericnacif/HirePilot)",
     "Accept": "application/json",
 }
 

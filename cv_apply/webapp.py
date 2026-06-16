@@ -498,7 +498,7 @@ def api_meta():
     return jsonify({
         "version": __version__,
         "variant": "full" if full else "lite",
-        "release_url": "https://github.com/ericnacif/vagamatch/releases/latest",
+        "release_url": "https://github.com/ericnacif/HirePilot/releases/latest",
     })
 
 

@@ -1,9 +1,8 @@
 # HirePilot
 
-> **HirePilot** — seu copiloto inteligente para conquistar a vaga ideal.  
-> *(Repositório GitHub: `vagamatch` — nome legado do pacote Python.)*
+> **HirePilot** — seu copiloto inteligente para conquistar a vaga ideal.
 
-[![CI](https://github.com/ericnacif/vagamatch/actions/workflows/ci.yml/badge.svg)](https://github.com/ericnacif/vagamatch/actions/workflows/ci.yml)
+[![CI](https://github.com/ericnacif/HirePilot/actions/workflows/ci.yml/badge.svg)](https://github.com/ericnacif/HirePilot/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Ruff](https://img.shields.io/badge/lint-ruff-261230)](https://github.com/astral-sh/ruff)
@@ -48,8 +47,8 @@ Use por sua conta e risco. Não há garantia contra bloqueio de conta.
 
 ```bash
 # Clone o repositório
-git clone https://github.com/ericnacif/vagamatch.git
-cd vagamatch
+git clone https://github.com/ericnacif/HirePilot.git
+cd HirePilot
 
 # Ambiente virtual (recomendado)
 python -m venv .venv
@@ -58,7 +57,7 @@ python -m venv .venv
 # Linux/macOS
 source .venv/bin/activate
 
-# Opção A: instalar como pacote (cria o comando `vagamatch`)
+# Opção A: instalar como pacote (cria o comando `vagamatch` — nome legado do pacote Python)
 pip install -e .
 # Opção B: só as dependências
 pip install -r requirements.txt
@@ -80,13 +79,13 @@ docker compose up --build
 Acesse `http://localhost:5000`. A imagem é enxuta (sem Playwright/torch): as fontes
 via API (Gupy, Remotive, RemoteOK) e o matching por palavras-chave funcionam normalmente.
 As fontes LinkedIn/InfoJobs (que abrem navegador) e o matching semântico ficam
-desativados nesse modo. Os dados (uploads) ficam no volume `vagamatch-data`.
+desativados nesse modo. Os dados (uploads) ficam no volume `hirepilot-data`.
 
 Sem o compose:
 
 ```bash
-docker build -t vagamatch .
-docker run -p 5000:5000 -v vagamatch-data:/app/data vagamatch
+docker build -t hirepilot .
+docker run -p 5000:5000 -v hirepilot-data:/app/data hirepilot
 ```
 
 ### App desktop — executável Windows (.exe)

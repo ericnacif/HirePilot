@@ -38,7 +38,7 @@ dev = [
 ]
 
 [project.urls]
-Repository = "https://github.com/ericnacif/vagamatch"
+Repository = "https://github.com/ericnacif/HirePilot"
 
 [project.scripts]
 vagamatch = "cv_apply.cli:main"

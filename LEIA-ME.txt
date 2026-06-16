@@ -18,4 +18,4 @@ Edições:
 
 Dados ficam só no seu PC: %LOCALAPPDATA%\VagaMatch\data\
 
-Atualizações: https://github.com/ericnacif/vagamatch/releases
+Atualizações: https://github.com/ericnacif/HirePilot/releases
