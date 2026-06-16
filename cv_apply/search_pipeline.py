@@ -20,8 +20,13 @@ from cv_apply.relevance import (
     filter_by_relevance,
 )
 from cv_apply.salary import extract_salary, filter_by_salary
-from cv_apply.sectors import apply_sector_boost, sector_gate_terms, sector_query, sector_search_queries
-from cv_apply.sources import dedupe_jobs, run_sources, AVAILABLE_SOURCES
+from cv_apply.sectors import (
+    apply_sector_boost,
+    sector_gate_terms,
+    sector_query,
+    sector_search_queries,
+)
+from cv_apply.sources import AVAILABLE_SOURCES, dedupe_jobs, run_sources
 
 GLOBAL_JOB_CAP = 100
 
@@ -356,7 +361,6 @@ def _assemble_result(
             "fetched": fetched_count,
             "shown": len(out),
             "elapsed_ms": int((time.perf_counter() - t0) * 1000),
-            "cached": False,
             "new_count": sum(1 for j in out if j.get("is_new")),
             "by_source": shown_by_source,
             "by_source_fetched": {n: len(raw_by_source.get(n, [])) for n in settings.search_sources},

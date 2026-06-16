@@ -5,9 +5,9 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from cv_apply.config import Settings, get_settings
+from cv_apply.config import get_settings
 from cv_apply.profile import CandidateProfile
-from cv_apply.search_pipeline import SearchContext, apply_payload_to_settings, execute_search
+from cv_apply.search_pipeline import apply_payload_to_settings, execute_search
 from cv_apply.storage import Storage
 
 logger = logging.getLogger(__name__)

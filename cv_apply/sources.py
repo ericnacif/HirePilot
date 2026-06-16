@@ -308,7 +308,7 @@ def search_remoteok(
             logger.info("RemoteOK: ampliando busca (sem filtro de termos)")
 
     jobs: list[JobPosting] = []
-    for published, item in rows:
+    for _published, item in rows:
         jobs.append(
             JobPosting(
                 id=_make_id("remoteok", str(item.get("id") or item.get("slug"))),

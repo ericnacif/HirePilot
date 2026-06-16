@@ -12,7 +12,6 @@ from cv_apply.relevance import extract_query_terms, term_in_job_text
 from cv_apply.sources import (
     _active_queries,
     _append_unique,
-    _fair_cap,
     _make_id,
     _strip_html,
 )
