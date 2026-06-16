@@ -31,7 +31,6 @@ excludes = [
     "matplotlib",
     "pytest",
     "ruff",
-    "sklearn",
 ]
 
 datas = [

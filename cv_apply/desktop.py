@@ -42,7 +42,7 @@ def _pick_port(start: int = 59000, end: int = 59100) -> int:
 
 def _ensure_desktop_defaults() -> None:
     os.environ.setdefault("USE_SEMANTIC_MATCHING", "false")
-    os.environ.setdefault("SEARCH_SOURCES", "gupy,remotive,remoteok")
+    os.environ.setdefault("SEARCH_SOURCES", "gupy,indeed,remotive,remoteok")
 
 
 def _message_box(title: str, text: str, *, error: bool = True) -> None:

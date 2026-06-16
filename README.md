@@ -113,11 +113,25 @@ O arquivo sai em `dist\HirePilot.exe`.
 | Recurso | No .exe |
 |---------|---------|
 | Interface web, upload, ATS, carta, adaptar currículo | Sim |
-| Fontes Gupy, Remotive, RemoteOK | Sim |
+| Fontes Gupy, Indeed, Remotive, RemoteOK | Sim |
 | LinkedIn / InfoJobs (navegador) | Não |
-| Matching semântico (torch) | Não — usa palavras-chave |
+| Matching semântico (torch) | Não — usa TF-IDF local |
 
 Dados em `%LOCALAPPDATA%\VagaMatch\data\`. Requer **WebView2** (padrão no Windows 10/11).
+
+### Distribuir para um amigo (sem código)
+
+1. Publique um release no GitHub (gera o `.exe` automaticamente):
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+2. Na página **Releases** do repositório, copie o link de download do `HirePilot.exe`.
+3. Envie o link + o arquivo [INSTALAR.md](INSTALAR.md) (instruções para leigo).
+
+Também dá para gerar localmente com `build_exe.bat` e mandar o `dist\HirePilot.exe` por Drive/WhatsApp.
 
 **Testar o modo app sem gerar o .exe:**
 
