@@ -35,8 +35,12 @@ _SPLASH_HTML = """<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">
   .box{text-align:center;padding:28px}
   .logo{width:58px;height:58px;margin:0 auto 16px;border-radius:16px;
     background:linear-gradient(145deg,#fff,#F6F8FC);border:1px solid rgba(93,140,255,.2);
-    box-shadow:0 10px 28px rgba(93,140,255,.18);display:flex;align-items:center;justify-content:center;
-    font-size:28px;animation:pulse 1.4s ease-in-out infinite}
+    box-shadow:0 10px 28px rgba(93,140,255,.18);display:flex;align-items:flex-end;justify-content:center;gap:4px;padding:0 0 14px;
+    animation:pulse 1.4s ease-in-out infinite}
+  .logo i{display:block;width:5px;border-radius:99px;background:linear-gradient(180deg,#5D8CFF,#8FB0FF)}
+  .logo i:nth-child(1){height:14px;opacity:.45}
+  .logo i:nth-child(2){height:20px;opacity:.7}
+  .logo i:nth-child(3){height:26px}
   h1{font-size:22px;font-weight:700;margin-bottom:6px;color:#1A2030}
   p{font-size:13px;color:#64748b;margin-bottom:18px}
   .bar{width:200px;height:5px;border-radius:99px;background:rgba(93,140,255,.15);margin:0 auto;overflow:hidden}
@@ -44,7 +48,7 @@ _SPLASH_HTML = """<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">
     animation:slide 1s ease-in-out infinite}
   @keyframes slide{0%{transform:translateX(-100%)}100%{transform:translateX(350%)}}
   @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
-</style></head><body><div class="box"><div class="logo">✈</div>
+</style></head><body><div class="box"><div class="logo"><i></i><i></i><i></i></div>
 <h1>HirePilot</h1><p id="msg">Iniciando…</p><div class="bar"><i></i></div></div></body></html>"""
 
 
