@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Ponto de entrada do executável VagaMatch (PyInstaller)."""
+"""Ponto de entrada do executável HirePilot (PyInstaller)."""
 
 from cv_apply.desktop import run_launch
 

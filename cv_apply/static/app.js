@@ -3,10 +3,15 @@
 let PROFILE = null;
 let LAST_JOBS = [];
 let LAST_SOURCES = [];
+let LAST_META = {};
 let CURRENT_PAGE = 1;
 const PAGE_SIZE = 10;
 let SORT_KEY = "score";
 let ONLY_FAVORITES = false;
+let FILTER_SOURCE = "";
+let HIDE_APPLIED = false;
+let SEARCH_ABORT = null;
+let SEARCH_GEN = 0;
 
 const FILTERS_KEY = "vagamatch.filters";
 const FAVORITES_KEY = "vagamatch.favorites";
@@ -65,9 +70,18 @@ function toast(msg, type) {
 }
 
 async function postJSON(url, body) {
-  const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  if (!r.ok) throw new Error("HTTP " + r.status);
-  return r.json();
+  const r = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  let data = null;
+  try { data = await r.json(); } catch (e) { /* ignore */ }
+  if (!r.ok) {
+    const msg = (data && data.error) ? data.error : ("HTTP " + r.status);
+    throw new Error(msg);
+  }
+  return data;
 }
 
 /* ---------- theme ---------- */
@@ -86,6 +100,49 @@ function toggleTheme() {
   applyTheme(next);
 }
 applyTheme(lsGet(THEME_KEY, "dark"));
+
+/* ---------- abas Buscar / Vagas ---------- */
+function switchTab(name) {
+  const search = name === "search";
+  $("searchTab").classList.toggle("on", search);
+  $("resultsTab").classList.toggle("on", !search);
+  $("tabSearch").classList.toggle("on", search);
+  $("tabResults").classList.toggle("on", !search);
+  $("tabSearch").setAttribute("aria-selected", search);
+  $("tabResults").setAttribute("aria-selected", !search);
+  document.querySelectorAll(".sb-item[data-sb]").forEach(el => {
+    el.classList.toggle("on", el.dataset.sb === name);
+  });
+  if (!search) window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function updateResultBadge() {
+  const n = LAST_JOBS.length;
+  ["resultBadge", "resultBadgeSb"].forEach(id => {
+    const b = $(id);
+    if (!b) return;
+    b.textContent = n;
+    b.classList.toggle("hidden", !n);
+  });
+}
+
+function updateStatCards() {
+  if (!PROFILE) return;
+  const ats = PROFILE.format_score;
+  $("statAts").textContent = ats == null ? "--" : ats + "/100";
+  const n = LAST_JOBS.length;
+  $("statJobs").textContent = String(n);
+  if (n) {
+    const avg = Math.round(LAST_JOBS.reduce((s, j) => s + (j.score || 0), 0) / n);
+    $("statCompat").textContent = avg + "%";
+  } else {
+    $("statCompat").textContent = ats != null ? ats + "%" : "--";
+  }
+}
+
+function firstName(name) {
+  return (name || "candidato").trim().split(/\s+/)[0];
+}
 
 /* ---------- upload ---------- */
 const drop = $("drop");
@@ -107,6 +164,10 @@ async function upload() {
     if (d.error) { $("fileName").textContent = d.error; toast(d.error, "error"); return; }
     PROFILE = d.profile;
     showProfile();
+    if (d.profile.suggested_keywords && !$("keywords").value.trim()) {
+      $("keywords").value = d.profile.suggested_keywords;
+      saveFilters();
+    }
     toast("Currículo analisado!", "success");
   } catch (e) {
     $("fileName").textContent = "Erro ao enviar. Tente novamente.";
@@ -127,16 +188,95 @@ function showProfile() {
   $("appView").classList.remove("hidden");
   $("resetBtn").classList.remove("hidden");
   $("dashBtn").classList.remove("hidden");
-  $("pName").textContent = PROFILE.name || "Perfil carregado";
+  $("pName").textContent = firstName(PROFILE.name);
   $("pInfo").textContent = profileInfo();
-  const v = PROFILE.format_score == null ? 0 : PROFILE.format_score;
-  $("ring").style.setProperty("--v", v);
-  $("ringv").textContent = PROFILE.format_score == null ? "--" : v;
   $("seniority").value = PROFILE.seniority || "";
+  updateStatCards();
   restoreFilters();
   if (!$("sector").value) suggestSector();
   updateFilterCount();
   renderSavedSearches();
+  loadServerState();
+}
+
+async function loadServerState() {
+  try {
+    const d = await fetch("/api/state").then(r => r.json());
+    if (d.favorites) {
+      FAVORITES = { ...FAVORITES, ...d.favorites };
+      saveFav();
+    }
+    if (d.applied) {
+      APPLIED = { ...APPLIED, ...d.applied };
+      saveApplied();
+    }
+    renderAlerts(d.alerts || []);
+    checkAlertHits();
+  } catch (e) { /* offline / primeira vez */ }
+}
+
+async function checkAlertHits() {
+  try {
+    const d = await fetch("/api/alerts/hits").then(r => r.json());
+    (d.hits || []).forEach(h => {
+      toast("Alerta «" + h.name + "»: " + h.new_count + " vaga(s) nova(s)", "success");
+    });
+  } catch (e) { /* ignore */ }
+}
+
+function renderAlerts(alerts) {
+  const wrap = $("alertsList");
+  if (!wrap) return;
+  if (!alerts.length) {
+    wrap.innerHTML = '<span class="muted" style="font-size:12px">Nenhum alerta</span>';
+    return;
+  }
+  wrap.innerHTML = alerts.map(a => {
+    const on = a.enabled !== false;
+    const cls = on ? "" : " off";
+    return '<span class="chip' + cls + '" title="Última: ' + esc(a.last_run || "nunca") + '">'
+      + '<span class="alert-toggle" onclick="toggleAlert(' + a.id + ',' + (!on) + ')">' + (on ? "🔔" : "🔕") + "</span> "
+      + esc(a.name) + (a.last_new_count ? " (" + a.last_new_count + " novas)" : "")
+      + ' <span class="x" onclick="deleteAlert(' + a.id + ')">×</span></span>';
+  }).join("");
+}
+
+function openAlertModal() {
+  const nameEl = $("alertName");
+  if (nameEl) nameEl.value = "";
+  $("alertModal").showModal();
+}
+
+async function confirmSaveAlert() {
+  const name = ($("alertName").value || "").trim();
+  if (!name) { toast("Informe um nome para o alerta.", "warn"); return; }
+  const filters = collectFilters();
+  try {
+    await postJSON("/api/alerts", { name, filters });
+    $("alertModal").close();
+    toast("Alerta criado.", "success");
+    loadServerState();
+  } catch (e) { toast(e.message || "Erro ao criar alerta.", "error"); }
+}
+
+async function saveAlert() { openAlertModal(); }
+
+async function toggleAlert(id, enabled) {
+  try {
+    await postJSON("/api/alerts/toggle", { id, enabled });
+    loadServerState();
+  } catch (e) { toast("Erro ao atualizar alerta.", "error"); }
+}
+
+async function deleteAlert(id) {
+  try {
+    await fetch("/api/alerts", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    loadServerState();
+  } catch (e) { toast("Erro ao remover alerta.", "error"); }
 }
 
 /* Heurística: sugere um setor a partir do cargo/skills detectados no currículo. */
@@ -206,12 +346,23 @@ function onSectorChange() { saveFilters(); }
 
 /* ---------- filters persistence ---------- */
 function collectFilters() {
+  const salMin = parseInt($("salary_min").value, 10);
+  const salMax = parseInt($("salary_max").value, 10);
+  const limit = parseInt($("limit").value) || 40;
+  const capField = parseInt($("global_cap").value, 10);
   return {
     sector: $("sector").value, keywords: $("keywords").value,
     location: $("location").value,
     workplace: getChecked("workplace"), job_type: getChecked("job_type"),
     experience: getChecked("experience"), date_posted: $("date_posted").value,
-    sources: getChecked("sources"), limit: parseInt($("limit").value) || 20,
+    sources: getChecked("sources"), limit,
+    global_cap: capField > 0 ? capField : null,
+    no_cache: $("no_cache") ? $("no_cache").checked : false,
+    broad: $("broad") ? $("broad").checked : true,
+    only_new: $("only_new") ? $("only_new").checked : false,
+    semantic: $("semantic") ? $("semantic").checked : true,
+    salary_min: salMin > 0 ? salMin : null,
+    salary_max: salMax > 0 ? salMax : null,
   };
 }
 
@@ -228,10 +379,17 @@ function applyFilterObject(f) {
   if (f.location != null) $("location").value = f.location;
   if (f.date_posted) $("date_posted").value = f.date_posted;
   if (f.limit) $("limit").value = f.limit;
+  if (f.global_cap) $("global_cap").value = f.global_cap;
+  if (f.salary_min) $("salary_min").value = f.salary_min;
+  if (f.salary_max) $("salary_max").value = f.salary_max;
   if (f.workplace) setChecks("workplace", f.workplace);
   if (f.job_type) setChecks("job_type", f.job_type);
   if (f.experience) setChecks("experience", f.experience);
   if (f.sources && f.sources.length) setChecks("sources", f.sources);
+  if (f.broad != null && $("broad")) $("broad").checked = !!f.broad;
+  if (f.only_new != null && $("only_new")) $("only_new").checked = !!f.only_new;
+  if (f.semantic != null && $("semantic")) $("semantic").checked = !!f.semantic;
+  if (f.no_cache != null && $("no_cache")) $("no_cache").checked = !!f.no_cache;
 }
 
 function restoreFilters() { applyFilterObject(lsGet(FILTERS_KEY, null)); updateFilterCount(); }
@@ -239,14 +397,15 @@ function restoreFilters() { applyFilterObject(lsGet(FILTERS_KEY, null)); updateF
 /* Conta filtros "ativos" (diferentes do padrão) para o indicador. */
 function countActiveFilters() {
   let n = 0;
-  if ($("sector").value) n++;
+  const sector = $("sector").value;
+  if (sector && sector !== "tec_all") n++;
   if (($("keywords").value || "").trim()) n++;
   if (($("location").value || "").trim().toLowerCase() !== "brasil") n++;
-  const wp = getChecked("workplace");
-  if (wp.length !== 1 || wp[0] !== "remoto") n++;
+  if (getChecked("workplace").length) n++;
   if (getChecked("job_type").length) n++;
   if (getChecked("experience").length) n++;
   if ($("date_posted").value !== "qualquer") n++;
+  if ($("broad") && !$("broad").checked) n++;
   return n;
 }
 
@@ -259,11 +418,18 @@ function updateFilterCount() {
 }
 
 function clearFilters() {
-  $("sector").value = "";
+  $("sector").value = "tec_all";
   $("keywords").value = "";
   $("location").value = "Brasil";
   $("date_posted").value = "qualquer";
-  setChecks("workplace", ["remoto"]);
+  $("limit").value = "40";
+  if ($("broad")) $("broad").checked = true;
+  if ($("only_new")) $("only_new").checked = false;
+  if ($("semantic")) $("semantic").checked = true;
+  $("salary_min").value = "";
+  $("salary_max").value = "";
+  $("global_cap").value = "";
+  setChecks("workplace", []);
   setChecks("job_type", []);
   setChecks("experience", []);
   saveFilters();
@@ -328,36 +494,124 @@ async function search() {
 
   btn.disabled = true; btn.classList.add("loading");
   btn.innerHTML = '<span class="btn-spin"></span> Buscando…';
-  $("results").innerHTML = skeletons(4);
+  $("results").innerHTML = skeletons(4) + '<div id="searchProgress" class="search-progress muted">Iniciando fontes…</div>';
+  switchTab("results");
+
   try {
-    const d = await postJSON("/api/search", payload);
-    if (d.error) {
-      $("results").innerHTML = '<div class="empty"><div class="big">⚠️</div>' + esc(d.error) + "</div>";
-    } else {
-      LAST_JOBS = (d.jobs || []).map(j => ({ ...j, applied: j.applied || isApplied(j.id) }));
-      LAST_SOURCES = d.sources || [];
-      CURRENT_PAGE = 1;
-      COMPARE.clear();
-      updateCompareBar();
-      renderResults();
-      const n = LAST_JOBS.length;
-      toast(n ? n + " vaga(s) encontrada(s)" : "Nenhuma vaga encontrada", n ? "success" : "warn");
-      scrollToResults();
-    }
+    await searchStream(payload);
   } catch (e) {
-    $("results").innerHTML = '<div class="empty"><div class="big">⚠️</div>Erro na busca. Tente novamente.</div>';
-    toast("Erro na busca.", "error");
+    if (e.name === "AbortError") return;
+    const msg = e.message || "Erro na busca.";
+    $("results").innerHTML = '<div class="empty"><div class="big">⚠️</div>' + esc(msg) + "</div>";
+    toast(msg, "error");
   }
   restore();
 }
 
+function applySearchResult(d, opts) {
+  opts = opts || {};
+  if (d.error) {
+    $("results").innerHTML = '<div class="empty"><div class="big">⚠️</div>' + esc(d.error) + "</div>";
+    return;
+  }
+  LAST_JOBS = (d.jobs || []).map(j => ({
+    ...j,
+    applied: j.applied || isApplied(j.id),
+    reasons_text: Array.isArray(j.reasons) ? j.reasons.join("; ") : (j.reasons_short || j.reasons || ""),
+  }));
+  LAST_SOURCES = d.sources || [];
+  LAST_META = d.meta || {};
+  if (!opts.partial) {
+    FILTER_SOURCE = "";
+    CURRENT_PAGE = 1;
+    COMPARE.clear();
+    updateCompareBar();
+  }
+  renderResults();
+  updateResultBadge();
+  if (!opts.partial) {
+    const n = LAST_JOBS.length;
+    const newN = LAST_META.new_count || 0;
+    let msg = n ? n + " vaga(s) ranqueadas" : "Nenhuma vaga encontrada";
+    if (newN) msg += " · " + newN + " nova(s)";
+    toast(msg, n ? "success" : "warn");
+    scrollToResults();
+  }
+}
+
+async function searchStream(payload) {
+  if (SEARCH_ABORT) SEARCH_ABORT.abort();
+  const gen = ++SEARCH_GEN;
+  SEARCH_ABORT = new AbortController();
+  const signal = SEARCH_ABORT.signal;
+
+  const r = await fetch("/api/search/stream", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    signal,
+  });
+  if (!r.ok) {
+    let msg = "HTTP " + r.status;
+    try {
+      const err = await r.json();
+      if (err.error) msg = err.error;
+    } catch (e) { /* ignore */ }
+    throw new Error(msg);
+  }
+  const reader = r.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  const prog = () => $("searchProgress");
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done || gen !== SEARCH_GEN) break;
+    buf += decoder.decode(value, { stream: true });
+    const parts = buf.split("\n\n");
+    buf = parts.pop() || "";
+    for (const block of parts) {
+      const line = block.split("\n").find(l => l.startsWith("data: "));
+      if (!line) continue;
+      if (gen !== SEARCH_GEN) return;
+      const ev = JSON.parse(line.slice(6));
+      if (ev.event === "source") {
+        const el = prog();
+        if (el) {
+          const label = SOURCE_LABELS[ev.source] || ev.source;
+          el.textContent = label + ": " + (ev.fetched ?? ev.count) + " coletada(s)…";
+        }
+      } else if (ev.event === "partial") {
+        applySearchResult(ev, { partial: true });
+        const el = prog();
+        if (el && ev.meta) {
+          el.textContent = (ev.meta.shown || 0) + " vaga(s) exibidas até agora…";
+        }
+      } else if (ev.event === "complete") {
+        applySearchResult(ev);
+        return;
+      } else if (ev.event === "error") {
+        applySearchResult({ error: ev.error });
+        return;
+      }
+    }
+  }
+}
+
+function renderPartialResults() { /* legado — partial via SSE */ }
+
+function progEl() { return $("searchProgress"); }
+
 function visibleJobs() {
   let jobs = LAST_JOBS.slice();
+  if (FILTER_SOURCE) jobs = jobs.filter(j => j.source === FILTER_SOURCE);
   if (ONLY_FAVORITES) jobs = jobs.filter(j => isFav(j.id));
+  if (HIDE_APPLIED) jobs = jobs.filter(j => !j.applied && !isApplied(j.id));
   const cmp = {
     score: (a, b) => b.score - a.score,
     ats: (a, b) => (b.ats || 0) - (a.ats || 0),
     title: (a, b) => (a.title || "").localeCompare(b.title || ""),
+    date: (a, b) => (b.posted_sort || 0) - (a.posted_sort || 0),
   }[SORT_KEY] || ((a, b) => b.score - a.score);
   jobs.sort(cmp);
   return jobs;
@@ -366,48 +620,123 @@ function visibleJobs() {
 const SOURCE_LABELS = {
   gupy: "Gupy", remotive: "Remotive", remoteok: "RemoteOK",
   infojobs: "InfoJobs", linkedin: "LinkedIn",
+  greenhouse: "Greenhouse", indeed: "Indeed",
 };
 
+function setSourceFilter(src) {
+  FILTER_SOURCE = src || "";
+  CURRENT_PAGE = 1;
+  renderResults();
+}
+
+function sourceFilterBar() {
+  if (!LAST_JOBS.length) return "";
+  const shownMap = LAST_META.by_source || {};
+  const counts = {};
+  LAST_JOBS.forEach(j => {
+    const s = j.source || "—";
+    counts[s] = (counts[s] || 0) + 1;
+  });
+  const keys = Object.keys({ ...counts, ...shownMap }).filter(k => k && k !== "—").sort();
+  if (!keys.length && !LAST_JOBS.length) return "";
+  let html = '<div class="src-filter-bar" role="group" aria-label="Filtrar por fonte">';
+  html += '<span class="src-filter-label">Exibidas:</span>';
+  html += '<button type="button" class="src-filter-chip' + (!FILTER_SOURCE ? " on" : "")
+    + '" onclick="setSourceFilter(\'\')">Todas <b>' + LAST_JOBS.length + "</b></button>";
+  keys.forEach(s => {
+    const label = SOURCE_LABELS[s] || s;
+    const n = counts[s] || shownMap[s] || 0;
+    html += '<button type="button" class="src-filter-chip' + (FILTER_SOURCE === s ? " on" : "")
+      + '" onclick="setSourceFilter(\'' + s + "')\">" + esc(label) + " <b>" + n + "</b></button>";
+  });
+  html += "</div>";
+  return html;
+}
+
 function sourcesStrip() {
-  if (!LAST_SOURCES.length) return "";
+  if (!LAST_SOURCES.length && !LAST_META.fetched) return "";
+  const shownMap = LAST_META.by_source || {};
+  const fetchedMap = LAST_META.by_source_fetched || {};
   const chips = LAST_SOURCES.map(s => {
     const label = SOURCE_LABELS[s.source] || s.source;
-    const cls = s.count > 0 ? "ok" : "zero";
-    return '<span class="src-chip ' + cls + '">' + esc(label) + ": " + s.count + "</span>";
+    const fetched = s.fetched ?? fetchedMap[s.source] ?? s.count ?? 0;
+    const shown = s.shown ?? shownMap[s.source] ?? 0;
+    const cls = fetched > 0 ? "ok" : "zero";
+    let countLabel = String(fetched);
+    if (shown && shown !== fetched) countLabel = fetched + "→" + shown;
+    else if (shown) countLabel = String(shown);
+    const hint = s.hint ? " — " + s.hint : "";
+    const cacheTag = s.cached ? " · cache" : "";
+    return '<span class="src-chip ' + cls + '" title="' + esc(label + hint + cacheTag) + '">'
+      + esc(label) + ": " + countLabel + (fetched === 0 && s.hint ? " ⚠" : "") + "</span>";
   }).join("");
-  return '<div class="sources-strip">Fontes: ' + chips + "</div>";
+  const metaParts = [];
+  if (LAST_META.fetched != null && LAST_META.shown != null && LAST_META.fetched !== LAST_META.shown) {
+    let truncHint = "";
+    if (LAST_META.truncation === "global_cap" && LAST_META.global_cap) {
+      truncHint = " (teto total: " + LAST_META.global_cap + ")";
+    } else if (LAST_META.truncation === "per_source" && LAST_META.limit_per_source) {
+      truncHint = " (até " + LAST_META.limit_per_source + " por fonte)";
+    } else if (LAST_META.after_filters != null && LAST_META.after_filters !== LAST_META.shown) {
+      truncHint = " (após filtros/ranking)";
+    }
+    metaParts.push(LAST_META.fetched + " coletadas → " + LAST_META.shown + " exibidas" + truncHint);
+  } else if (LAST_META.shown != null) {
+    metaParts.push(LAST_META.shown + " vaga(s)");
+  }
+  if (LAST_META.elapsed_ms) metaParts.push((LAST_META.elapsed_ms / 1000).toFixed(1) + "s");
+  if (LAST_META.broad === false) metaParts.push("modo focado");
+  if (LAST_META.cached) metaParts.push("do cache");
+  if (LAST_META.new_count) metaParts.push(LAST_META.new_count + " nova(s)");
+  const metaHtml = metaParts.length
+    ? '<span class="search-meta">' + esc(metaParts.join(" · ")) + "</span>"
+    : "";
+  const prefix = LAST_SOURCES.length ? "Fontes: " + chips : "";
+  return '<div class="sources-strip">' + prefix + metaHtml + "</div>";
 }
 
 function renderResults() {
   const el = $("results");
+  if (LAST_JOBS.length) {
+    const p = $("searchProgress");
+    if (p) p.remove();
+  }
   const jobs = visibleJobs();
   if (!LAST_JOBS.length) {
     el.innerHTML = sourcesStrip() + smartEmptyState();
     return;
   }
-  if (!jobs.length) { el.innerHTML = toolbar(0) + '<div class="empty"><div class="big">★</div>Nenhuma vaga favoritada ainda.</div>'; return; }
+  if (!jobs.length) {
+    let msg = "Nenhuma vaga neste filtro.";
+    if (ONLY_FAVORITES) msg = "Nenhuma vaga favoritada.";
+    else if (HIDE_APPLIED) msg = "Nenhuma vaga pendente (ocultando já aplicadas).";
+    else if (FILTER_SOURCE) msg = "Nenhuma vaga desta fonte na lista.";
+    el.innerHTML = sourcesStrip() + sourceFilterBar() + toolbar(0)
+      + '<div class="empty"><div class="big">🔍</div>' + esc(msg) + "</div>";
+    return;
+  }
 
   const pages = Math.max(1, Math.ceil(jobs.length / PAGE_SIZE));
   if (CURRENT_PAGE > pages) CURRENT_PAGE = pages;
   const start = (CURRENT_PAGE - 1) * PAGE_SIZE;
   const pageJobs = jobs.slice(start, start + PAGE_SIZE);
 
-  let html = sourcesStrip() + toolbar(jobs.length);
+  let html = sourcesStrip() + sourceFilterBar() + toolbar(jobs.length);
   pageJobs.forEach((j, i) => { html += jobCard(j, i); });
   html += pager(pages);
   el.innerHTML = html;
+  updateStatCards();
 }
 
 function smartEmptyState() {
-  const totalRaw = LAST_SOURCES.reduce((n, s) => n + (s.count || 0), 0);
+  const totalRaw = LAST_SOURCES.reduce((n, s) => n + (s.fetched ?? s.count ?? 0), 0);
   const responded = LAST_SOURCES.filter(s => s.count > 0).map(s => SOURCE_LABELS[s.source] || s.source);
   const empty = LAST_SOURCES.filter(s => s.count === 0).map(s => SOURCE_LABELS[s.source] || s.source);
 
   let msg, hint = "";
   if (totalRaw > 0) {
-    // Fontes trouxeram vagas, mas os filtros (nível/termo) removeram todas.
-    msg = "As fontes retornaram " + totalRaw + " vaga(s), mas nenhuma passou nos filtros aplicados.";
-    hint = '<div class="muted" style="margin-top:8px">Dica: remova o filtro de <b>Nível</b> (pode não haver vagas desse nível agora), troque o setor ou use palavras-chave mais amplas.</div>';
+    msg = "As fontes retornaram " + totalRaw + " vaga(s), mas nenhuma ficou após os filtros opcionais.";
+    hint = '<div class="muted" style="margin-top:8px">Dica: desmarque filtros de <b>Nível</b> ou <b>Modelo de trabalho</b>, ou ative <b>Busca ampla</b>.</div>';
   } else {
     msg = "Nenhuma vaga encontrada nas fontes selecionadas.";
     if (empty.length) hint = '<div class="muted" style="margin-top:8px">Sem retorno de: ' + esc(empty.join(", ")) + ". Tente outras fontes ou amplie a busca.</div>";
@@ -420,29 +749,64 @@ function smartEmptyState() {
 
 function toolbar(total) {
   const favCount = LAST_JOBS.filter(j => isFav(j.id)).length;
+  const appliedCount = LAST_JOBS.filter(j => j.applied || isApplied(j.id)).length;
   return '<div class="count">'
-    + '<span>' + total + ' vaga(s)</span>'
+    + '<span><b>' + total + '</b> vaga(s)'
+    + (FILTER_SOURCE || ONLY_FAVORITES || HIDE_APPLIED ? " (filtradas)" : " · ranqueadas por compatibilidade")
+    + "</span>"
     + '<span class="toolbar">'
     + '<label class="tb-label">Ordenar: '
     + '<select onchange="setSort(this.value)" aria-label="Ordenar resultados">'
     + '<option value="score"' + (SORT_KEY === "score" ? " selected" : "") + '>Compatibilidade</option>'
+    + '<option value="date"' + (SORT_KEY === "date" ? " selected" : "") + '>Mais recentes</option>'
     + '<option value="ats"' + (SORT_KEY === "ats" ? " selected" : "") + '>ATS</option>'
     + '<option value="title"' + (SORT_KEY === "title" ? " selected" : "") + '>Título</option>'
     + '</select></label>'
     + '<button id="favToggle" class="btn small ' + (ONLY_FAVORITES ? "primary" : "ghost") + '" onclick="toggleOnlyFavorites()">★ Favoritas (' + favCount + ')</button>'
-    + '<button class="btn small ghost" onclick="exportJobs(\'csv\')">⬇ CSV</button>'
+    + '<button id="hideAppliedBtn" class="btn small ' + (HIDE_APPLIED ? "primary" : "ghost") + '" onclick="toggleHideApplied()">✓ Ocultar aplicadas (' + appliedCount + ')</button>'
+    + '<button class="btn small ghost" onclick="exportJobs(\'csv\')" title="Exporta o que está visível nos filtros atuais">⬇ CSV</button>'
     + '<button class="btn small ghost" onclick="exportJobs(\'json\')">⬇ JSON</button>'
     + '</span></div>';
+}
+
+function toggleHideApplied() {
+  HIDE_APPLIED = !HIDE_APPLIED;
+  CURRENT_PAGE = 1;
+  renderResults();
+}
+
+function exportJobs(fmt) {
+  const jobs = visibleJobs();
+  if (!jobs.length) { toast("Nada para exportar com os filtros atuais.", "warn"); return; }
+  const params = new URLSearchParams({ format: fmt });
+  if (FILTER_SOURCE) params.set("source", FILTER_SOURCE);
+  if (ONLY_FAVORITES) params.set("favorites", "1");
+  if (HIDE_APPLIED) params.set("hide_applied", "1");
+  window.location.href = "/api/export?" + params.toString();
+}
+
+function scoreBar(score, label) {
+  const pct = Math.max(0, Math.min(100, Math.round(score || 0)));
+  const cls = scoreClass(pct);
+  return '<div class="score-meter ' + cls + '" title="' + esc(label) + '">'
+    + '<div class="score-meter-fill" style="width:' + pct + '%"></div>'
+    + '<span class="score-meter-val">' + pct + "%</span></div>";
 }
 
 function jobCard(j, index) {
   const tags = (j.skills || []).map(s => '<span class="tag">' + esc(s) + "</span>").join("");
   const pills = [];
+  if (j.is_new) pills.push('<span class="pill new">✦ Nova</span>');
   if (j.easy_apply) pills.push('<span class="pill easy">⚡ Easy Apply</span>');
+  if (j.salary) pills.push('<span class="pill sal">' + esc(j.salary) + "</span>");
   if (j.posted_at) pills.push('<span class="pill">' + esc(j.posted_at) + "</span>");
   const fav = isFav(j.id);
   const cmp = COMPARE.has(j.id);
   const delay = index != null ? ' style="animation-delay:' + Math.min(index * 45, 360) + 'ms"' : "";
+  const reasons = j.reasons_text || (Array.isArray(j.reasons) ? j.reasons.join("; ") : (j.reasons || ""));
+  const reasonsHtml = reasons
+    ? '<details class="why-job"><summary>Por que essa vaga?</summary><p>' + esc(reasons) + "</p></details>"
+    : "";
   return '<div class="card' + (j.applied ? " applied" : "") + '" id="card-' + j.id + '"' + delay + ">"
     + '<div class="card-top"><div>'
     + '<div class="src">' + esc(j.source) + "</div>"
@@ -451,15 +815,19 @@ function jobCard(j, index) {
     + "</div>"
     + '<div class="badges">'
     + '<button class="fav' + (fav ? " on" : "") + '" title="Favoritar" aria-label="Favoritar vaga" onclick="toggleFavorite(\'' + j.id + "')\">" + (fav ? "★" : "☆") + "</button>"
-    + '<span class="atsb">ATS ' + Math.round(j.ats || 0) + '%</span>'
-    + '<span class="score ' + scoreClass(j.score) + '">' + Math.round(j.score) + "</span></div>"
+    + "</div>"
+    + "</div>"
+    + '<div class="score-bars">'
+    + '<span class="score-bar-label">Match</span>' + scoreBar(j.score, "Match")
+    + '<span class="score-bar-label">ATS</span>' + scoreBar(j.ats, "Cobertura ATS")
     + "</div>"
     + (pills.length ? '<div class="tags">' + pills.join("") + "</div>" : "")
     + (j.description ? '<div class="desc">' + esc(j.description) + "</div>" : "")
+    + reasonsHtml
     + (tags ? '<div class="tags">' + tags + "</div>" : "")
-    + (j.reasons ? '<div class="reasons">' + esc(j.reasons) + "</div>" : "")
     + '<div class="actions">'
-    + '<a class="btn primary" href="' + j.url + '" target="_blank" rel="noopener" onclick="markApplied(\'' + j.id + "',true)\">Aplicar</a>"
+    + '<button class="btn" onclick="openJobPreview(\'' + j.id + "')\">Ver vaga</button>"
+    + '<a class="btn primary" href="' + j.url + '" target="_blank" rel="noopener">Aplicar</a>'
     + '<button class="btn" onclick="atsDetail(\'' + j.id + "')\">Análise ATS</button>"
     + '<button class="btn" onclick="tailor(\'' + j.id + "')\">Adaptar currículo</button>"
     + '<button class="btn" onclick="cover(\'' + j.id + "')\">Carta</button>"
@@ -480,11 +848,6 @@ function pager(pages) {
 function goPage(p) { CURRENT_PAGE = p; renderResults(); window.scrollTo({ top: 0, behavior: "smooth" }); }
 function setSort(k) { SORT_KEY = k; CURRENT_PAGE = 1; renderResults(); }
 function toggleOnlyFavorites() { ONLY_FAVORITES = !ONLY_FAVORITES; CURRENT_PAGE = 1; renderResults(); }
-
-function exportJobs(fmt) {
-  if (!LAST_JOBS.length) { toast("Busque vagas primeiro.", "error"); return; }
-  window.location.href = "/api/export?format=" + fmt;
-}
 
 /* ---------- atualização in-place (sem re-render total) ---------- */
 function replaceCard(id) {
@@ -519,9 +882,11 @@ function toggleFavorite(id) {
   const wasFav = isFav(id);
   if (wasFav) {
     delete FAVORITES[id];
+    postJSON("/api/state/favorite", { id, favorite: false }).catch(() => {});
   } else {
     const job = LAST_JOBS.find(j => j.id === id);
     FAVORITES[id] = job ? jobMeta(job) : { id };
+    postJSON("/api/state/favorite", { id, favorite: true, meta: FAVORITES[id] }).catch(() => {});
   }
   saveFav();
   if (ONLY_FAVORITES) {
@@ -607,7 +972,25 @@ async function markApplied(id, val, skipRender) {
   saveApplied();
   if (job) job.applied = val;
   if (!skipRender) replaceCard(id);
-  try { await postJSON("/api/applied", { id, applied: val }); } catch (e) {}
+  try {
+    await postJSON("/api/applied", { id, applied: val, meta: APPLIED[id] });
+    await postJSON("/api/state/applied", { id, applied: val, meta: APPLIED[id] || {} });
+  } catch (e) {}
+}
+
+async function openJobPreview(id) {
+  openModal("Detalhes da vaga", '<div class="spinner"></div>');
+  try {
+    const d = await postJSON("/api/job/detail", { id });
+    if (d.error) { $("modalBody").innerHTML = esc(d.error); return; }
+    let html = "<h3>" + esc(d.title) + "</h3>";
+    html += '<p class="muted">' + esc(d.company) + (d.location ? " · " + esc(d.location) : "") + "</p>";
+    if (d.salary) html += '<p><b>Salário:</b> ' + esc(d.salary) + "</p>";
+    if (d.posted_at) html += '<p class="muted">' + esc(d.posted_at) + "</p>";
+    html += '<div class="job-preview">' + esc(d.description || "Sem descrição disponível.") + "</div>";
+    html += '<p style="margin-top:12px"><a class="btn primary" href="' + d.url + '" target="_blank" rel="noopener">Abrir vaga</a></p>';
+    $("modalBody").innerHTML = html;
+  } catch (e) { $("modalBody").innerHTML = "Erro ao carregar vaga."; }
 }
 
 async function toggleApplied(id) {
@@ -671,10 +1054,21 @@ function openDashboard() {
   const avg = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
   const bySource = {};
   applied.forEach(a => { bySource[a.source || "—"] = (bySource[a.source || "—"] || 0) + 1; });
+  const searched = LAST_JOBS.length;
+  const favN = favs.length;
+  const appliedN = applied.length;
 
-  let html = '<div class="stats">'
-    + statCard("📮", applied.length, "Candidaturas")
-    + statCard("★", favs.length, "Favoritos")
+  let html = '<div class="funnel">'
+    + '<div class="funnel-step"><b>' + searched + '</b><span>Buscadas</span></div>'
+    + '<div class="funnel-arrow">→</div>'
+    + '<div class="funnel-step"><b>' + favN + '</b><span>Favoritas</span></div>'
+    + '<div class="funnel-arrow">→</div>'
+    + '<div class="funnel-step"><b>' + appliedN + '</b><span>Aplicadas</span></div>'
+    + "</div>";
+
+  html += '<div class="stats">'
+    + statCard("📮", appliedN, "Candidaturas")
+    + statCard("★", favN, "Favoritos")
     + statCard("🎯", avg, "Score médio")
     + "</div>";
 
@@ -698,7 +1092,7 @@ function openDashboard() {
         + ' <button class="btn small ghost" onclick="removeApplied(\'' + a.id + "')\">Remover</button></div></div>";
     }).join("") + "</div>";
   }
-  openModal("Painel", html);
+  openModal("Dashboard HirePilot", html);
 }
 
 function statCard(icon, value, label) {

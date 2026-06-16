@@ -14,6 +14,7 @@ from cv_apply.skills_dict import text_has_skill
 # quando o usuário NÃO digita palavras-chave próprias. Frases curtas funcionam
 # melhor em APIs que casam o texto de forma quase literal (Gupy/InfoJobs).
 SECTOR_PRIMARY_TERM: dict[str, str] = {
+    "tec_all": "tecnologia",
     "tec_dev": "desenvolvedor",
     "tec_suporte": "suporte técnico",
     "tec_dados": "analista de dados",
@@ -44,6 +45,53 @@ def sector_query(sector_id: str) -> str:
     return SECTOR_PRIMARY_TERM.get((sector_id or "").strip().lower(), "")
 
 
+# Várias consultas por setor — a Gupy/InfoJobs casam ``jobName`` de forma literal,
+# então buscamos com termos diferentes e unimos os resultados (deduplicados).
+SECTOR_SEARCH_QUERIES: dict[str, list[str]] = {
+    "tec_all": [
+        "tecnologia", "ti", "desenvolvedor", "programador", "analista",
+        "engenheiro", "software", "informática", "sistemas",
+    ],
+    "tec_dev": [
+        "desenvolvedor", "programador", "software", "engenheiro de software",
+        "full stack", "backend", "frontend", "web",
+    ],
+    "tec_suporte": [
+        "suporte técnico", "help desk", "analista de suporte", "service desk", "ti",
+    ],
+    "tec_dados": [
+        "dados", "data", "analista de dados", "cientista de dados", "bi", "engenheiro de dados",
+    ],
+    "tec_devops": ["devops", "sre", "infraestrutura", "cloud", "platform engineer"],
+    "tec_qa": ["qa", "qualidade", "testes", "analista de testes", "automação de testes"],
+    "tec_seguranca": ["segurança", "cyber", "soc", "pentest", "information security"],
+    "produto": ["product manager", "product owner", "gerente de produto", "produto"],
+    "design": ["designer", "ux", "ui", "product design", "experiência"],
+    "marketing": ["marketing", "growth", "mídia", "conteúdo", "seo"],
+    "vendas": ["vendas", "comercial", "inside sales", "account executive", "sdr"],
+    "atendimento": ["atendimento", "customer success", "suporte ao cliente", "sac"],
+    "rh": ["recursos humanos", "rh", "recrutamento", "seleção", "talent acquisition"],
+    "financeiro": ["financeiro", "controladoria", "analista financeiro", "fp&a"],
+    "fiscal": ["fiscal", "tributário", "impostos", "tax"],
+    "contabil": ["contábil", "contabilidade", "contador", "accounting"],
+    "administrativo": ["administrativo", "assistente administrativo", "back office"],
+    "juridico": ["jurídico", "advogado", "legal", "compliance"],
+    "logistica": ["logística", "supply chain", "estoque", "expedição"],
+    "engenharia": ["engenheiro", "engenharia", "projetos", "manutenção"],
+    "saude": ["saúde", "enfermagem", "médico", "clínico", "hospitalar"],
+    "educacao": ["professor", "educação", "ensino", "pedagógico", "instrutor"],
+}
+
+
+def sector_search_queries(sector_id: str) -> list[str]:
+    """Termos de busca a rodar nas fontes (união dos resultados)."""
+    sid = (sector_id or "").strip().lower()
+    if sid in SECTOR_SEARCH_QUERIES:
+        return list(SECTOR_SEARCH_QUERIES[sid])
+    primary = sector_query(sid)
+    return [primary] if primary else []
+
+
 # Tokens genéricos que não ajudam a discriminar relevância de área.
 _GENERIC_SECTOR_TOKENS = {
     "de", "da", "do", "ao", "e", "técnico", "tecnico", "analista", "assistente",
@@ -72,6 +120,10 @@ def sector_gate_terms(sector_id: str) -> list[str]:
 
 # id do setor → skills/termos característicos da área
 SECTOR_SKILLS: dict[str, list[str]] = {
+    "tec_all": [
+        "python", "java", "javascript", "sql", "ti", "software", "dados",
+        "cloud", "suporte", "desenvolvimento", "tecnologia",
+    ],
     "tec_dev": [
         "python", "java", "javascript", "typescript", "php", "c#", ".net",
         "react", "node.js", "laravel", "api", "git",

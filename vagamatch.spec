@@ -1,12 +1,12 @@
 # -*- mode: python ; coding: utf-8 -*-
-# Gera o executável Windows: pyinstaller vagamatch.spec --noconfirm
-# Ou use: build_exe.bat
+# Gera o executável Windows: build_exe.bat
+# App nativo (janela própria, sem console) via pywebview + WebView2.
 
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 block_cipher = None
 
-hiddenimports = collect_submodules("cv_apply") + [
+hiddenimports = collect_submodules("cv_apply") + collect_submodules("webview") + [
     "flask",
     "jinja2",
     "werkzeug",
@@ -15,6 +15,11 @@ hiddenimports = collect_submodules("cv_apply") + [
     "httpx",
     "pydantic",
     "pydantic_core",
+    "webview",
+    "webview.platforms",
+    "webview.platforms.winforms",
+    "webview.platforms.edgechromium",
+    "clr",
 ]
 
 excludes = [
@@ -29,14 +34,17 @@ excludes = [
     "sklearn",
 ]
 
+datas = [
+    ("cv_apply/templates", "cv_apply/templates"),
+    ("cv_apply/static", "cv_apply/static"),
+]
+datas += collect_data_files("webview")
+
 a = Analysis(
     ["run_app.py"],
     pathex=[],
     binaries=[],
-    datas=[
-        ("cv_apply/templates", "cv_apply/templates"),
-        ("cv_apply/static", "cv_apply/static"),
-    ],
+    datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
@@ -57,14 +65,14 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name="VagaMatch",
+    name="HirePilot",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=True,
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

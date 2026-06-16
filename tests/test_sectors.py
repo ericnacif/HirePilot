@@ -6,6 +6,7 @@ from cv_apply.sectors import (
     apply_sector_boost,
     sector_gate_terms,
     sector_query,
+    sector_search_queries,
     sector_skills,
 )
 
@@ -29,8 +30,18 @@ def test_sector_skills_conhecido_e_desconhecido():
 
 def test_sector_query_primario():
     assert sector_query("tec_dev") == "desenvolvedor"
+    assert sector_query("tec_all") == "tecnologia"
     assert sector_query("fiscal") == "fiscal"
     assert sector_query("inexistente") == ""
+
+
+def test_sector_search_queries_multiplas():
+    queries = sector_search_queries("tec_all")
+    assert len(queries) >= 5
+    assert "tecnologia" in queries
+    dev = sector_search_queries("tec_dev")
+    assert "desenvolvedor" in dev
+    assert sector_search_queries("inexistente") == []
 
 
 def test_sector_gate_terms_inclui_skills_e_termo():

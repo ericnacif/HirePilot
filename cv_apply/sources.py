@@ -32,7 +32,25 @@ _HTTP_HEADERS = {
 }
 
 # Plataformas que são exclusivamente remotas
+# Plataformas que são exclusivamente remotas
 REMOTE_ONLY_SOURCES = {"remotive", "remoteok"}
+
+
+def source_zero_hint(name: str, filters: SearchFilters) -> str | None:
+    """Explica por que uma fonte pode ter voltado 0 vagas."""
+    if name in REMOTE_ONLY_SOURCES and not filters.allows_remote():
+        return "marque «remoto» nos filtros de local"
+    if name == "indeed":
+        return "RSS do Indeed pode estar bloqueado — tente Gupy ou InfoJobs"
+    if name == "remoteok":
+        return "nenhuma vaga remota bateu com os termos ou data"
+    if name == "infojobs":
+        return "requer navegador — marque a fonte e aguarde o scraping"
+    if name == "linkedin":
+        return "requer login no navegador na primeira vez"
+    if name == "greenhouse":
+        return "boards US fixos — poucas vagas BR"
+    return None
 
 
 def _strip_html(text: str) -> str:
@@ -76,6 +94,15 @@ def _strip_accents(text: str) -> str:
     return "".join(c for c in nfkd if not unicodedata.combining(c))
 
 
+def _normalize_url(url: str) -> str:
+    """URL canônica para deduplicar a mesma vaga em fontes diferentes."""
+    u = (url or "").lower().strip()
+    u = re.sub(r"[?#].*$", "", u)
+    u = u.rstrip("/")
+    u = re.sub(r"^https?://(www\.)?", "", u)
+    return u
+
+
 def _dedupe_key(job: JobPosting) -> str:
     """Chave para identificar a mesma vaga em fontes diferentes.
 
@@ -93,21 +120,74 @@ def _dedupe_key(job: JobPosting) -> str:
 def dedupe_jobs(jobs: list[JobPosting]) -> list[JobPosting]:
     """Remove vagas duplicadas entre fontes, mantendo a mais completa.
 
-    Em caso de empate, prioriza vagas com Easy Apply e descrição mais longa.
+    Primeiro unifica por URL; depois por título+empresa normalizados.
     """
-    best: dict[str, JobPosting] = {}
+    by_url: dict[str, JobPosting] = {}
+    no_url: list[JobPosting] = []
     for job in jobs:
+        key = _normalize_url(job.url)
+        if not key:
+            no_url.append(job)
+            continue
+        current = by_url.get(key)
+        if current is None or _job_quality(job) > _job_quality(current):
+            by_url[key] = job
+
+    merged = list(by_url.values()) + no_url
+
+    best: dict[str, JobPosting] = {}
+    for job in merged:
         key = _dedupe_key(job)
         current = best.get(key)
-        if current is None:
-            best[key] = job
-            continue
-        # escolhe a "melhor" versão da vaga duplicada
-        current_score = (current.easy_apply, len(current.description or ""))
-        new_score = (job.easy_apply, len(job.description or ""))
-        if new_score > current_score:
+        if current is None or _job_quality(job) > _job_quality(current):
             best[key] = job
     return list(best.values())
+
+
+def _job_quality(job: JobPosting) -> tuple:
+    return (job.easy_apply, len(job.description or ""), len(job.url or ""))
+
+
+def _fair_cap(
+    remaining: int, queries_left: int, *, floor: int = 8, broad: bool = False
+) -> int:
+    """Quota justa por termo de busca para diversificar resultados entre queries."""
+    if remaining <= 0 or queries_left <= 0:
+        return 0
+    if queries_left == 1:
+        return remaining
+    per = max(1, remaining // queries_left)
+    if broad:
+        return min(remaining, per)
+    return min(remaining, max(min(floor, remaining), per))
+
+
+_BROAD_MAX_QUERIES = 6
+
+
+def _active_queries(filters: SearchFilters) -> list[str]:
+    """Termos de busca ativos (setor multi-query ou palavra-chave do usuário)."""
+    queries = [q.strip() for q in (filters.search_queries or []) if q.strip()]
+    if not queries:
+        kw = (filters.keywords or "").strip()
+        if kw:
+            queries = _keyword_candidates(kw)
+        else:
+            queries = [""]
+    if filters.broad_mode and len(queries) > _BROAD_MAX_QUERIES:
+        return queries[:_BROAD_MAX_QUERIES]
+    return queries
+
+
+def _append_unique(
+    target: list[JobPosting], batch: list[JobPosting], seen: set[str], limit: int
+) -> None:
+    for job in batch:
+        if len(target) >= limit:
+            return
+        if job.id not in seen:
+            seen.add(job.id)
+            target.append(job)
 
 
 # --------------------------------------------------------------------------- #
@@ -121,35 +201,52 @@ def search_remotive(
         return []
 
     url = "https://remotive.com/api/remote-jobs"
-    params = {"search": filters.keywords, "limit": str(max_jobs)}
+    queries = _active_queries(filters)
     jobs: list[JobPosting] = []
+    seen: set[str] = set()
+
     try:
         with httpx.Client(timeout=30, headers=_HTTP_HEADERS, follow_redirects=True) as c:
-            resp = c.get(url, params=params)
-            resp.raise_for_status()
-            data = resp.json()
+            for i, query in enumerate(queries):
+                if len(jobs) >= max_jobs:
+                    break
+                cap = _fair_cap(
+                    max_jobs - len(jobs), len(queries) - i,
+                    floor=5 if filters.broad_mode else 8,
+                    broad=filters.broad_mode,
+                )
+                params = {"search": query, "limit": str(max(cap, 1))}
+                resp = c.get(url, params=params)
+                resp.raise_for_status()
+                batch: list[JobPosting] = []
+                for item in resp.json().get("jobs", []):
+                    published = _parse_date(item.get("publication_date"))
+                    if not filters.matches_date(published):
+                        continue
+                    if not filters.broad_mode and not filters.matches_generic_job_type(
+                        item.get("job_type", "")
+                    ):
+                        continue
+                    sal = item.get("salary") or ""
+                    desc = _strip_html(item.get("description", ""))
+                    if sal:
+                        desc = f"Salário: {sal}\n\n{desc}"
+                    batch.append(
+                        JobPosting(
+                            id=_make_id("remotive", str(item.get("id"))),
+                            title=item.get("title", "Sem título"),
+                            company=item.get("company_name", "Empresa não informada"),
+                            location=item.get("candidate_required_location") or "Remoto",
+                            url=item.get("url", ""),
+                            description=desc,
+                            easy_apply=False,
+                            posted_at=item.get("publication_date"),
+                        )
+                    )
+                _append_unique(jobs, batch, seen, max_jobs)
     except Exception as exc:
         logger.warning("Remotive falhou: %s", exc)
-        return []
 
-    for item in data.get("jobs", [])[:max_jobs]:
-        published = _parse_date(item.get("publication_date"))
-        if not filters.matches_date(published):
-            continue
-        if not filters.matches_generic_job_type(item.get("job_type", "")):
-            continue
-        jobs.append(
-            JobPosting(
-                id=_make_id("remotive", str(item.get("id"))),
-                title=item.get("title", "Sem título"),
-                company=item.get("company_name", "Empresa não informada"),
-                location=item.get("candidate_required_location") or "Remoto",
-                url=item.get("url", ""),
-                description=_strip_html(item.get("description", "")),
-                easy_apply=False,
-                posted_at=item.get("publication_date"),
-            )
-        )
     return jobs
 
 
@@ -163,9 +260,12 @@ def search_remoteok(
         logger.info("RemoteOK ignorado (filtro não inclui remoto).")
         return []
 
+    from cv_apply.relevance import extract_query_terms, term_in_job_text
+
     url = "https://remoteok.com/api"
+    headers = {**_HTTP_HEADERS, "Accept": "application/json"}
     try:
-        with httpx.Client(timeout=30, headers=_HTTP_HEADERS, follow_redirects=True) as c:
+        with httpx.Client(timeout=30, headers=headers, follow_redirects=True) as c:
             resp = c.get(url)
             resp.raise_for_status()
             data = resp.json()
@@ -173,20 +273,42 @@ def search_remoteok(
         logger.warning("RemoteOK falhou: %s", exc)
         return []
 
-    keywords = [k for k in filters.keywords.lower().split() if k]
+    if filters.broad_mode and not (filters.keywords or "").strip():
+        terms: list[str] = []
+    else:
+        terms = extract_query_terms(filters.keywords)
+        if not terms and (filters.keywords or "").strip():
+            terms = [t for t in filters.keywords.lower().split() if len(t) > 1]
+
+    def _collect(require_terms: bool) -> list[tuple[datetime | None, dict]]:
+        rows: list[tuple[datetime | None, dict]] = []
+        for item in data:
+            if not isinstance(item, dict) or "position" not in item:
+                continue
+            haystack = (
+                f"{item.get('position', '')} {item.get('description', '')} "
+                f"{' '.join(item.get('tags', []))}"
+            )
+            if require_terms and terms and not any(term_in_job_text(t, haystack) for t in terms):
+                continue
+            published = _parse_date(item.get("date") or item.get("epoch"))
+            if not filters.matches_date(published):
+                continue
+            rows.append((published, item))
+        rows.sort(
+            key=lambda row: row[0] or datetime.min.replace(tzinfo=timezone.utc),
+            reverse=True,
+        )
+        return rows
+
+    rows = _collect(require_terms=True)
+    if not rows and filters.broad_mode and terms:
+        rows = _collect(require_terms=False)
+        if rows:
+            logger.info("RemoteOK: ampliando busca (sem filtro de termos)")
+
     jobs: list[JobPosting] = []
-    for item in data:
-        if not isinstance(item, dict) or "position" not in item:
-            continue  # primeiro item é aviso legal
-
-        haystack = f"{item.get('position','')} {item.get('description','')} {' '.join(item.get('tags', []))}".lower()
-        if keywords and not any(k in haystack for k in keywords):
-            continue
-
-        published = _parse_date(item.get("date") or item.get("epoch"))
-        if not filters.matches_date(published):
-            continue
-
+    for published, item in rows:
         jobs.append(
             JobPosting(
                 id=_make_id("remoteok", str(item.get("id") or item.get("slug"))),
@@ -243,21 +365,19 @@ def search_gupy(
         "Origin": "https://portal.gupy.io",
         "Referer": "https://portal.gupy.io/",
     }
-    page_size = min(max_jobs, 100)
-    wp_types = filters.gupy_workplace_types()
-    job_types = filters.gupy_job_types()
+    wp_types = [] if filters.broad_mode else filters.gupy_workplace_types()
+    job_types = [] if filters.broad_mode else filters.gupy_job_types()
 
-    def _fetch(client: httpx.Client, job_name: str) -> list[JobPosting]:
+    def _fetch(client: httpx.Client, job_name: str, cap: int) -> list[JobPosting]:
         found: list[JobPosting] = []
         offset = 0
-        while len(found) < max_jobs:
+        page_size = min(max(cap, 1), 100)
+        while len(found) < cap:
             params = {
                 "jobName": job_name,
                 "limit": str(page_size),
                 "offset": str(offset),
             }
-            if filters.only_remote():
-                params["isRemoteWork"] = "true"
             resp = client.get(url, params=params)
             resp.raise_for_status()
             data = resp.json()
@@ -293,7 +413,7 @@ def search_gupy(
                         posted_at=item.get("publishedDate"),
                     )
                 )
-                if len(found) >= max_jobs:
+                if len(found) >= cap:
                     break
 
             pagination = data.get("pagination", {})
@@ -303,22 +423,31 @@ def search_gupy(
                 break
         return found
 
+    queries = _active_queries(filters)
     jobs: list[JobPosting] = []
+    seen: set[str] = set()
     try:
         with httpx.Client(timeout=30, headers=headers, follow_redirects=True) as c:
-            for candidate in _keyword_candidates(filters.keywords):
-                jobs = _fetch(c, candidate)
-                if jobs:
-                    if candidate != filters.keywords:
-                        logger.info(
-                            "Gupy: '%s' sem resultados; usando '%s'",
-                            filters.keywords, candidate,
-                        )
+            for i, query in enumerate(queries):
+                if len(jobs) >= max_jobs:
                     break
+                cap = _fair_cap(
+                    max_jobs - len(jobs), len(queries) - i,
+                    floor=5 if filters.broad_mode else 8,
+                    broad=filters.broad_mode,
+                )
+                batch: list[JobPosting] = []
+                for candidate in _keyword_candidates(query):
+                    batch = _fetch(c, candidate, cap)
+                    if batch:
+                        if candidate != query:
+                            logger.info("Gupy: '%s' sem resultados; usando '%s'", query, candidate)
+                        break
+                _append_unique(jobs, batch, seen, max_jobs)
     except Exception as exc:
         logger.warning("Gupy falhou: %s", exc)
 
-    return jobs
+    return jobs[:max_jobs]
 
 
 # --------------------------------------------------------------------------- #
@@ -331,6 +460,27 @@ def _slugify_keywords(keywords: str) -> str:
     return text or "desenvolvedor"
 
 
+def _infojobs_description(page, url: str) -> str:
+    """Busca descrição na página da vaga (best-effort)."""
+    try:
+        page.goto(url, wait_until="domcontentloaded", timeout=20000)
+        page.wait_for_timeout(1200)
+        for sel in (
+            ".js_vacancyDescription",
+            "[data-testid='vacancy-description']",
+            ".ij-Os-block",
+            "div.vacancy-description",
+        ):
+            loc = page.locator(sel).first
+            if loc.count():
+                text = loc.inner_text(timeout=2500).strip()
+                if text:
+                    return _strip_html(text)[:5000]
+    except Exception as exc:
+        logger.debug("InfoJobs descrição %s: %s", url, exc)
+    return ""
+
+
 def search_infojobs(
     settings: Settings, filters: SearchFilters, max_jobs: int
 ) -> list[JobPosting]:
@@ -338,7 +488,7 @@ def search_infojobs(
 
     base = "https://www.infojobs.com.br"
 
-    def _scrape(page, keywords: str) -> list[JobPosting]:
+    def _scrape(page, keywords: str, cap: int) -> list[JobPosting]:
         slug = _slugify_keywords(keywords)
         page.goto(
             f"{base}/vagas-de-emprego-{slug}.aspx",
@@ -349,7 +499,7 @@ def search_infojobs(
 
         found: list[JobPosting] = []
         cards = page.locator("div.js_rowCard")
-        count = min(cards.count(), max_jobs)
+        count = min(cards.count(), cap)
         for i in range(count):
             card = cards.nth(i)
             try:
@@ -382,24 +532,43 @@ def search_infojobs(
                         easy_apply=False,
                     )
                 )
+                if len(found) >= cap:
+                    break
             except Exception as exc:
                 logger.debug("InfoJobs card %d erro: %s", i, exc)
+
+        for job in found[: min(len(found), 12)]:
+            if not job.description:
+                job.description = _infojobs_description(page, job.url)
+
         return found
 
     jobs: list[JobPosting] = []
+    seen: set[str] = set()
+    queries = _active_queries(filters)
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=settings.headless)
             page = browser.new_page(locale="pt-BR")
-            for candidate in _keyword_candidates(filters.keywords):
-                jobs = _scrape(page, candidate)
-                if jobs:
-                    if candidate != filters.keywords:
-                        logger.info(
-                            "InfoJobs: '%s' sem resultados; usando '%s'",
-                            filters.keywords, candidate,
-                        )
+            for i, query in enumerate(queries):
+                if len(jobs) >= max_jobs:
                     break
+                cap = _fair_cap(
+                    max_jobs - len(jobs), len(queries) - i,
+                    floor=5 if filters.broad_mode else 8,
+                    broad=filters.broad_mode,
+                )
+                batch: list[JobPosting] = []
+                for candidate in _keyword_candidates(query):
+                    batch = _scrape(page, candidate, cap)
+                    if batch:
+                        if candidate != query:
+                            logger.info(
+                                "InfoJobs: '%s' sem resultados; usando '%s'",
+                                query, candidate,
+                            )
+                        break
+                _append_unique(jobs, batch, seen, max_jobs)
             browser.close()
     except Exception as exc:
         logger.warning("InfoJobs falhou: %s", exc)
@@ -415,8 +584,31 @@ def search_linkedin(
 ) -> list[JobPosting]:
     from cv_apply.linkedin import LinkedInClient
 
-    with LinkedInClient(settings) as client:
-        return client.search_jobs(max_jobs=max_jobs)
+    try:
+        with LinkedInClient(settings) as client:
+            return client.search_jobs(
+                max_jobs=max_jobs,
+                fetch_descriptions=max_jobs <= 20,
+            )
+    except Exception as exc:
+        logger.warning("LinkedIn falhou: %s", exc)
+        return []
+
+
+def search_greenhouse(
+    settings: Settings, filters: SearchFilters, max_jobs: int
+) -> list[JobPosting]:
+    from cv_apply.sources_greenhouse import search_greenhouse as _search
+
+    return _search(settings, filters, max_jobs)
+
+
+def search_indeed(
+    settings: Settings, filters: SearchFilters, max_jobs: int
+) -> list[JobPosting]:
+    from cv_apply.sources_indeed import search_indeed as _search
+
+    return _search(settings, filters, max_jobs)
 
 
 SOURCE_FUNCS: dict[str, Callable[[Settings, SearchFilters, int], list[JobPosting]]] = {
@@ -425,6 +617,8 @@ SOURCE_FUNCS: dict[str, Callable[[Settings, SearchFilters, int], list[JobPosting
     "infojobs": search_infojobs,
     "remotive": search_remotive,
     "remoteok": search_remoteok,
+    "greenhouse": search_greenhouse,
+    "indeed": search_indeed,
 }
 
 AVAILABLE_SOURCES = list(SOURCE_FUNCS.keys())
@@ -439,14 +633,16 @@ def run_sources(
     settings: Settings,
     max_jobs: int,
     on_log: Callable[[str], None] | None = None,
-) -> dict[str, list[JobPosting]]:
-    """Executa as fontes habilitadas e retorna {fonte: [vagas]}.
+    on_source_done: Callable[[str, list[JobPosting]], None] | None = None,
+    use_cache: bool = True,
+) -> tuple[dict[str, list[JobPosting]], dict[str, dict]]:
+    """Executa as fontes habilitadas. Retorna (vagas, meta por fonte)."""
+    from cv_apply.search_cache import get_search_cache
 
-    Fontes de API rodam em paralelo (mais rápido); fontes que usam navegador
-    rodam em sequência.
-    """
     filters = SearchFilters.from_settings(settings)
+    cache = get_search_cache() if use_cache else None
     results: dict[str, list[JobPosting]] = {}
+    source_meta: dict[str, dict] = {}
 
     def log(msg: str) -> None:
         if on_log:
@@ -464,11 +660,25 @@ def run_sources(
     browser_sources = [n for n in requested if n in BROWSER_SOURCES]
 
     def run_one(name: str) -> tuple[str, list[JobPosting]]:
+        cache_key = cache.make_key(name, settings, filters, max_jobs) if cache else ""
+        if cache:
+            hit = cache.get(cache_key)
+            if hit is not None:
+                log(f"  {name}: {len(hit)} vaga(s) (cache)")
+                source_meta[name] = {"cached": True}
+                if on_source_done:
+                    on_source_done(name, hit)
+                return name, hit
         try:
             found = SOURCE_FUNCS[name](settings, filters, max_jobs)
+            if cache:
+                cache.set(cache_key, found)
+            hint = source_zero_hint(name, filters) if not found else None
+            source_meta[name] = {"cached": False, "hint": hint}
             return name, found
         except Exception as exc:
             log(f"  {name}: erro ({exc})")
+            source_meta[name] = {"cached": False, "hint": str(exc)[:120]}
             return name, []
 
     if api_sources:
@@ -479,11 +689,15 @@ def run_sources(
                 name, found = future.result()
                 results[name] = found
                 log(f"  {name}: {len(found)} vaga(s)")
+                if on_source_done:
+                    on_source_done(name, found)
 
     for name in browser_sources:
         log(f"Buscando em '{name}'...")
-        _, found = run_one(name)
+        name, found = run_one(name)
         results[name] = found
         log(f"  {name}: {len(found)} vaga(s)")
+        if on_source_done:
+            on_source_done(name, found)
 
-    return results
+    return results, source_meta

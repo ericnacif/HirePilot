@@ -64,6 +64,10 @@ class Settings(BaseModel):
     search_date_posted: str = Field(
         default_factory=lambda: os.getenv("SEARCH_DATE_POSTED", "qualquer").lower()
     )
+    search_queries: list[str] = Field(default_factory=list)
+    broad_mode: bool = Field(
+        default_factory=lambda: os.getenv("SEARCH_BROAD", "true").lower() == "true"
+    )
     daily_apply_limit: int = Field(
         default_factory=lambda: int(os.getenv("DAILY_APPLY_LIMIT", "10"))
     )

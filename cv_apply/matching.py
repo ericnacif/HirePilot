@@ -11,6 +11,7 @@ os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
 os.environ.setdefault("TRANSFORMERS_NO_ADVISORY_WARNINGS", "1")
 
 from cv_apply.profile import CandidateProfile, JobMatch, JobPosting
+from cv_apply.relevance import extract_query_terms
 from cv_apply.skills_dict import find_skills, text_has_skill
 
 logger = logging.getLogger(__name__)
@@ -287,5 +288,86 @@ def rank_jobs(
         for job, sem in zip(jobs, semantics, strict=False)
     ]
     matches = [m for m in matches if m.score >= min_score]
+    matches.sort(key=lambda m: m.score, reverse=True)
+    return matches
+
+
+def apply_keyword_boost(
+    matches: list[JobMatch], keywords: str, max_boost: float = 10.0
+) -> list[JobMatch]:
+    """Sobe vagas que mencionam termos específicos digitados pelo usuário."""
+    terms = extract_query_terms(keywords)
+    if not terms or not matches:
+        return matches
+
+    for m in matches:
+        text = f"{m.job.title} {m.job.description}"
+        hits = sum(1 for t in terms if text_has_skill(t, text))
+        if hits:
+            boost = max_boost * (hits / len(terms))
+            m.score = round(min(100.0, m.score + boost), 1)
+
+    matches.sort(key=lambda m: m.score, reverse=True)
+    return matches
+
+
+def apply_preference_boost(
+    matches: list[JobMatch], settings, max_boost: float = 18.0
+) -> list[JobMatch]:
+    """No modo amplo, sobe vagas que batem com filtros opcionais (sem excluir as demais)."""
+    from cv_apply.relevance import detect_seniority_levels
+
+    workplace = set(settings.search_workplace or [])
+    experience = set(settings.search_experience or []) & {
+        "estagio", "junior", "pleno", "senior"
+    }
+    job_types = set(settings.search_job_type or [])
+
+    if not workplace and not experience and not job_types:
+        return matches
+
+    remote_kw = ("remoto", "remote", "home office", "home-office", "anywhere")
+    hybrid_kw = ("híbrido", "hibrido", "hybrid")
+    onsite_kw = ("presencial", "on-site", "onsite")
+
+    for m in matches:
+        text = f"{m.job.title} {m.job.description} {m.job.location}".lower()
+        loc = (m.job.location or "").lower()
+        boost = 0.0
+
+        if workplace:
+            if "remoto" in workplace and any(k in loc or k in text for k in remote_kw):
+                boost += 6
+            if "hibrido" in workplace and any(k in loc or k in text for k in hybrid_kw):
+                boost += 5
+            if "presencial" in workplace and any(k in loc or k in text for k in onsite_kw):
+                boost += 5
+            if workplace == {"remoto"} and any(k in loc or k in text for k in hybrid_kw):
+                boost += 3
+
+        if experience:
+            levels = detect_seniority_levels(m.job.title)
+            if not levels:
+                levels = detect_seniority_levels((m.job.description or "")[:250])
+            if levels & experience:
+                boost += 8
+            elif not levels:
+                boost += 2
+
+        if job_types:
+            if "efetivo" in job_types and not any(
+                t in text for t in ("estágio", "estagio", "intern", "trainee", "temporário", "temporario")
+            ):
+                boost += 4
+            if "estagio" in job_types and any(
+                t in text for t in ("estágio", "estagio", "intern", "trainee")
+            ):
+                boost += 6
+            if "pj" in job_types and any(t in text for t in ("pj", "freelance", "contrato", "outsourc")):
+                boost += 5
+
+        if boost:
+            m.score = round(min(100.0, m.score + min(boost, max_boost)), 1)
+
     matches.sort(key=lambda m: m.score, reverse=True)
     return matches

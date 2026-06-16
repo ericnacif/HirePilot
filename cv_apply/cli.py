@@ -99,7 +99,7 @@ def cmd_search(args: argparse.Namespace) -> int:
         info += "\n[yellow]LinkedIn:[/yellow] abrirá o navegador para login assistido."
     console.print(Panel(info, title="Busca de vagas"))
 
-    results = run_sources(
+    results, _source_meta = run_sources(
         settings,
         max_jobs=max_jobs,
         on_log=lambda m: console.print(f"[dim]{m}[/dim]"),

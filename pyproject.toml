@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "vagamatch"
 version = "0.1.0"
-description = "Assistente local de busca e candidatura a vagas com análise ATS, matching semântico e interface web."
+description = "HirePilot — copiloto inteligente de vagas com análise ATS, matching e interface web."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -47,7 +47,7 @@ vagamatch = "cv_apply.cli:main"
 include = ["cv_apply*"]
 
 [tool.setuptools.package-data]
-cv_apply = ["templates/*.html", "static/*"]
+cv_apply = ["templates/*.html", "static/*", "static/logo.svg"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

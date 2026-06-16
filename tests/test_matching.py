@@ -4,6 +4,7 @@ from cv_apply.matching import (
     _keyword_overlap,
     _location_score,
     _seniority_score,
+    apply_keyword_boost,
     match_job,
     rank_jobs,
 )
@@ -78,3 +79,16 @@ def test_rank_jobs_filtra_min_score():
 
 def test_rank_jobs_vazio():
     assert rank_jobs(CandidateProfile(), [], use_semantic=False) == []
+
+
+def test_apply_keyword_boost_prioriza_termo():
+    from cv_apply.profile import JobMatch
+
+    a = JobMatch(job=_job("Dev Java"), score=50.0, reasons=[], skill_overlap=[])
+    b = JobMatch(
+        job=_job("Dev PHP", description="Laravel e PHP"),
+        score=50.0, reasons=[], skill_overlap=[],
+    )
+    ranked = apply_keyword_boost([a, b], "php")
+    assert ranked[0].job.title == "Dev PHP"
+    assert ranked[0].score > ranked[1].score

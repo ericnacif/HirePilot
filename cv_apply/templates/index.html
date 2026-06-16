@@ -3,21 +3,23 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#0a0c12">
-<title>VagaMatch — encontre vagas que combinam com você</title>
+<meta name="theme-color" content="#0f172a">
+<title>HirePilot — seu copiloto inteligente de vagas</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
 <div class="bg-orbs" aria-hidden="true"><span class="orb orb-1"></span><span class="orb orb-2"></span><span class="orb orb-3"></span></div>
 <header>
   <div class="brand">
-    <div class="logo">V</div>
+    <div class="logo" aria-hidden="true">
+      <img src="{{ url_for('static', filename='logo.svg') }}" alt="" width="32" height="32">
+    </div>
     <div class="brand-text">
-      <h1>VagaMatch</h1>
-      <span class="sub">Currículo → ATS → vagas que combinam</span>
+      <h1>HirePilot</h1>
+      <span class="sub">Sua jornada. Nossa inteligência.</span>
     </div>
   </div>
   <span class="spacer"></span>
@@ -29,148 +31,219 @@
 <div class="container">
   <!-- ETAPA 1: UPLOAD -->
   <div id="uploadView" class="upload-box">
-    <span class="badge">✦ Análise de compatibilidade com IA</span>
-    <h2 class="lead">Encontre a vaga certa <span class="grad">pra você</span></h2>
-    <p class="lead-sub">Suba seu currículo, receba sua nota ATS na hora e descubra vagas ranqueadas por compatibilidade em várias plataformas.</p>
+    <span class="badge">✦ SUA JORNADA. NOSSA INTELIGÊNCIA.</span>
+    <h2 class="lead">Seu copiloto <span class="grad">pra vaga ideal</span></h2>
+    <p class="lead-sub">Envie seu currículo, busque em várias plataformas e veja o <b>match %</b> de cada vaga — você decide onde aplicar.</p>
     <div class="drop" id="drop" onclick="document.getElementById('file').click()">
       <div class="icon">📄</div>
       <h2>Envie seu currículo</h2>
-      <p>Arraste aqui ou clique para escolher — PDF ou DOCX.</p>
+      <p>Arraste aqui ou clique — PDF ou DOCX.</p>
       <p style="margin-top:18px"><span class="btn primary lg">Escolher arquivo</span></p>
       <p class="hint" id="fileName"></p>
     </div>
     <input type="file" id="file" accept=".pdf,.docx,.doc" class="hidden" onchange="upload()">
     <div class="features">
-      <div class="feature"><span class="fi">🎯</span><div><b>Match inteligente</b><span>Ranqueia por skills, senioridade e local</span></div></div>
-      <div class="feature"><span class="fi">📊</span><div><b>Score ATS</b><span>Veja como seu currículo se sai</span></div></div>
-      <div class="feature"><span class="fi">🔒</span><div><b>Privado</b><span>Seus dados ficam só nesta sessão</span></div></div>
+      <div class="feature"><span class="fi">🔎</span><div><b>Busca inteligente</b><span>Várias fontes, máximo de vagas</span></div></div>
+      <div class="feature"><span class="fi">📊</span><div><b>Análise ATS</b><span>Score de formato e compatibilidade</span></div></div>
+      <div class="feature"><span class="fi">✈️</span><div><b>Copiloto</b><span>Prepara tudo — você envia</span></div></div>
     </div>
   </div>
 
   <!-- ETAPA 2: APP -->
   <div id="appView" class="hidden">
-    <div class="profilebar">
-      <div class="gauge">
-        <div class="ring" id="ring"><span id="ringv">--</span></div>
-        <div>
-          <div class="muted" style="font-size:12px">Nota ATS (formato)</div>
-          <a href="#" class="link" onclick="showFormat();return false;">Ver detalhes</a>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="sb-brand">
+          <img src="{{ url_for('static', filename='logo.svg') }}" alt="">
+          <span>HirePilot</span>
         </div>
-      </div>
-      <div style="flex:1; min-width:160px">
-        <div class="who" id="pName">—</div>
-        <div class="muted" id="pInfo">—</div>
-      </div>
-      <div>
-        <div class="field-label">Senioridade</div>
-        <select id="seniority" onchange="saveSeniority()" style="width:auto;padding:7px 10px">
-          <option value="">Não informado</option>
-          <option value="estagiário">Estagiário</option>
-          <option value="júnior">Júnior</option>
-          <option value="pleno">Pleno</option>
-          <option value="sênior">Sênior</option>
-        </select>
-      </div>
-    </div>
+        <nav class="sb-nav">
+          <button type="button" class="sb-item" onclick="openDashboard()"><span class="sb-ic">📊</span> Dashboard</button>
+          <button type="button" class="sb-item on" data-sb="search" onclick="switchTab('search')"><span class="sb-ic">🔎</span> Buscar vagas</button>
+          <button type="button" class="sb-item" data-sb="results" onclick="switchTab('results')"><span class="sb-ic">📋</span> Vagas <span id="resultBadgeSb" class="rbadge hidden">0</span></button>
+          <button type="button" class="sb-item" onclick="showFormat()"><span class="sb-ic">📈</span> Análise ATS</button>
+          <button type="button" class="sb-item" onclick="resetProfile()"><span class="sb-ic">📄</span> Currículo</button>
+        </nav>
+      </aside>
 
-    <div class="layout">
-      <div class="panel">
-        <div class="label-row panel-head">
-          <label style="margin:0">Filtros <span id="filterCount" class="fcount hidden">0</span></label>
-          <span class="link" onclick="clearFilters()">limpar</span>
+      <div class="app-main">
+        <div class="greet">
+          <h2>Olá, <span id="pName">—</span>!</h2>
+          <p class="muted" id="pInfo">—</p>
         </div>
-        <label for="sector">Setor / área</label>
-        <select id="sector" onchange="onSectorChange()">
-          <option value="">Selecione…</option>
-          <optgroup label="Tecnologia">
-            <option value="tec_dev">Tecnologia / Desenvolvimento</option>
-            <option value="tec_suporte">Tecnologia / Suporte</option>
-            <option value="tec_dados">Tecnologia / Dados</option>
-            <option value="tec_devops">Tecnologia / DevOps / Infra</option>
-            <option value="tec_qa">Tecnologia / QA / Testes</option>
-            <option value="tec_seguranca">Tecnologia / Segurança</option>
-          </optgroup>
-          <optgroup label="Produto & Design">
-            <option value="produto">Produto</option>
-            <option value="design">Design / UX</option>
-          </optgroup>
-          <optgroup label="Negócios">
-            <option value="marketing">Marketing</option>
-            <option value="vendas">Vendas / Comercial</option>
-            <option value="atendimento">Atendimento ao cliente</option>
-            <option value="rh">Recursos Humanos (RH)</option>
-            <option value="financeiro">Financeiro</option>
-            <option value="fiscal">Fiscal</option>
-            <option value="contabil">Contábil</option>
-            <option value="administrativo">Administrativo</option>
-            <option value="juridico">Jurídico</option>
-            <option value="logistica">Logística / Supply Chain</option>
-          </optgroup>
-          <optgroup label="Outros">
-            <option value="engenharia">Engenharia</option>
-            <option value="saude">Saúde</option>
-            <option value="educacao">Educação</option>
-            <option value="outro">Outro (usar palavras-chave)</option>
-          </optgroup>
-        </select>
-        <label for="keywords">Palavras-chave (opcional)</label>
-        <input type="text" id="keywords" placeholder="ex: react, node, fintech">
-        <label>Localização</label>
-        <input type="text" id="location" placeholder="ex: Brasil, Remote, Portugal" value="Brasil">
-        <label>Modelo de trabalho</label>
-        <div class="chips" id="workplace">
-          <label class="chip"><input type="checkbox" value="remoto" checked> Remoto</label>
-          <label class="chip"><input type="checkbox" value="hibrido"> Híbrido</label>
-          <label class="chip"><input type="checkbox" value="presencial"> Presencial</label>
-        </div>
-        <label>Tipo de vaga</label>
-        <div class="chips" id="job_type">
-          <label class="chip"><input type="checkbox" value="efetivo"> Efetivo</label>
-          <label class="chip"><input type="checkbox" value="estagio"> Estágio</label>
-          <label class="chip"><input type="checkbox" value="pj"> PJ</label>
-          <label class="chip"><input type="checkbox" value="temporario"> Temporário</label>
-        </div>
-        <label>Nível</label>
-        <div class="chips" id="experience">
-          <label class="chip"><input type="checkbox" value="estagio"> Estágio</label>
-          <label class="chip"><input type="checkbox" value="junior"> Júnior</label>
-          <label class="chip"><input type="checkbox" value="pleno"> Pleno</label>
-          <label class="chip"><input type="checkbox" value="senior"> Sênior</label>
-        </div>
-        <label>Publicadas em</label>
-        <select id="date_posted">
-          <option value="qualquer">Qualquer data</option>
-          <option value="24h">Últimas 24h</option>
-          <option value="semana">Última semana</option>
-          <option value="mes">Último mês</option>
-        </select>
-        <div class="label-row">
-          <label>Fontes</label>
-          <span class="link" onclick="toggleAllSources()">selecionar todas</span>
-        </div>
-        <div class="chips" id="sources">
-          <label class="chip"><input type="checkbox" value="gupy" checked> Gupy</label>
-          <label class="chip"><input type="checkbox" value="remotive" checked> Remotive</label>
-          <label class="chip"><input type="checkbox" value="remoteok" checked> RemoteOK</label>
-          <label class="chip warn"><input type="checkbox" value="infojobs"> InfoJobs *</label>
-          <label class="chip warn"><input type="checkbox" value="linkedin"> LinkedIn *</label>
-        </div>
-        <div class="hint">* abrem um navegador (mais lento; LinkedIn pede login)</div>
-        <label>Máx. por fonte</label>
-        <input type="number" id="limit" value="20" min="1" max="100">
-        <button class="go" id="go" onclick="search()">Buscar vagas</button>
 
-        <div class="label-row" style="margin-top:18px">
-          <label style="margin:0">Buscas salvas</label>
-          <span class="link" onclick="saveCurrentSearch()">+ salvar atual</span>
+        <div class="stat-cards">
+          <div class="stat-card">
+            <span class="sc-label">Compatibilidade geral</span>
+            <span class="sc-val" id="statCompat">--</span>
+          </div>
+          <div class="stat-card">
+            <span class="sc-label">Análise ATS</span>
+            <span class="sc-val" id="statAts">--</span>
+          </div>
+          <div class="stat-card">
+            <span class="sc-label">Vagas para você</span>
+            <span class="sc-val plain" id="statJobs">0</span>
+          </div>
         </div>
-        <div class="chips" id="savedSearches"></div>
-      </div>
 
-      <div id="results">
-        <div class="empty">
-          <div class="big">🔍</div>
-          Preencha os filtros e clique em <b>Buscar vagas</b>.
+        <div class="profilebar-compact">
+          <div class="field-label">Senioridade</div>
+          <select id="seniority" onchange="saveSeniority()" style="width:auto;padding:7px 10px">
+            <option value="">Não informado</option>
+            <option value="estagiário">Estagiário</option>
+            <option value="júnior">Júnior</option>
+            <option value="pleno">Pleno</option>
+            <option value="sênior">Sênior</option>
+          </select>
+          <span class="muted" style="font-size:12px;margin-left:auto"><a href="#" class="link" onclick="showFormat();return false;">Detalhes do ATS →</a></span>
+        </div>
+
+        <nav class="app-nav" role="tablist">
+          <button type="button" class="tab on" id="tabSearch" onclick="switchTab('search')" role="tab" aria-selected="true">🔎 Buscar</button>
+          <button type="button" class="tab" id="tabResults" onclick="switchTab('results')" role="tab" aria-selected="false">📋 Resultados <span id="resultBadge" class="rbadge hidden">0</span></button>
+        </nav>
+
+        <div id="searchTab" class="tab-pane on">
+          <div class="panel">
+            <div class="label-row panel-head">
+              <label style="margin:0">Filtros <span id="filterCount" class="fcount hidden">0</span></label>
+              <span class="link" onclick="clearFilters()">limpar</span>
+            </div>
+
+            <details class="fblock" open>
+              <summary>O que buscar</summary>
+              <label for="sector">Setor / área</label>
+              <select id="sector" onchange="onSectorChange()">
+                <option value="">Selecione…</option>
+                <optgroup label="Tecnologia">
+                  <option value="tec_all" selected>Tecnologia — todas as áreas</option>
+                  <option value="tec_dev">Desenvolvimento</option>
+                  <option value="tec_suporte">Suporte / TI</option>
+                  <option value="tec_dados">Dados / BI</option>
+                  <option value="tec_devops">DevOps / Infra</option>
+                  <option value="tec_qa">QA / Testes</option>
+                  <option value="tec_seguranca">Segurança</option>
+                </optgroup>
+                <optgroup label="Produto & Design">
+                  <option value="produto">Produto</option>
+                  <option value="design">Design / UX</option>
+                </optgroup>
+                <optgroup label="Negócios">
+                  <option value="marketing">Marketing</option>
+                  <option value="vendas">Vendas / Comercial</option>
+                  <option value="atendimento">Atendimento ao cliente</option>
+                  <option value="rh">Recursos Humanos (RH)</option>
+                  <option value="financeiro">Financeiro</option>
+                  <option value="fiscal">Fiscal</option>
+                  <option value="contabil">Contábil</option>
+                  <option value="administrativo">Administrativo</option>
+                  <option value="juridico">Jurídico</option>
+                  <option value="logistica">Logística / Supply Chain</option>
+                </optgroup>
+                <optgroup label="Outros">
+                  <option value="engenharia">Engenharia</option>
+                  <option value="saude">Saúde</option>
+                  <option value="educacao">Educação</option>
+                  <option value="outro">Outro (usar palavras-chave)</option>
+                </optgroup>
+              </select>
+              <label for="keywords">Palavras-chave (opcional)</label>
+              <input type="text" id="keywords" placeholder="ex: php, react — vazio = tudo do setor">
+              <label for="location">Localização</label>
+              <input type="text" id="location" placeholder="ex: Brasil, Remote" value="Brasil">
+              <label>Salário mínimo (R$/mês, opcional)</label>
+              <input type="number" id="salary_min" placeholder="ex: 5000" min="0" step="500">
+              <label>Salário máximo (R$/mês, opcional)</label>
+              <input type="number" id="salary_max" placeholder="ex: 15000" min="0" step="500">
+            </details>
+
+            <details class="fblock" open>
+              <summary>Refinar (opcional)</summary>
+              <label>Modelo de trabalho</label>
+              <div class="chips" id="workplace">
+                <label class="chip"><input type="checkbox" value="remoto"> Remoto</label>
+                <label class="chip"><input type="checkbox" value="hibrido"> Híbrido</label>
+                <label class="chip"><input type="checkbox" value="presencial"> Presencial</label>
+              </div>
+              <p class="hint" style="margin-top:4px">Nenhum marcado = todos os modelos</p>
+              <label>Tipo de vaga</label>
+              <div class="chips" id="job_type">
+                <label class="chip"><input type="checkbox" value="efetivo"> Efetivo</label>
+                <label class="chip"><input type="checkbox" value="estagio"> Estágio</label>
+                <label class="chip"><input type="checkbox" value="pj"> PJ</label>
+                <label class="chip"><input type="checkbox" value="temporario"> Temporário</label>
+              </div>
+              <label>Nível</label>
+              <div class="chips" id="experience">
+                <label class="chip"><input type="checkbox" value="estagio"> Estágio</label>
+                <label class="chip"><input type="checkbox" value="junior"> Júnior</label>
+                <label class="chip"><input type="checkbox" value="pleno"> Pleno</label>
+                <label class="chip"><input type="checkbox" value="senior"> Sênior</label>
+              </div>
+              <label>Publicadas em</label>
+              <select id="date_posted">
+                <option value="qualquer">Qualquer data</option>
+                <option value="24h">Últimas 24h</option>
+                <option value="semana">Última semana</option>
+                <option value="mes">Último mês</option>
+              </select>
+            </details>
+
+            <details class="fblock" open>
+              <summary>Fontes e volume</summary>
+              <div class="label-row">
+                <label>Fontes</label>
+                <span class="link" onclick="toggleAllSources()">selecionar todas</span>
+              </div>
+              <div class="chips" id="sources">
+                <label class="chip"><input type="checkbox" value="gupy" checked> Gupy</label>
+                <label class="chip"><input type="checkbox" value="indeed" checked> Indeed</label>
+                <label class="chip"><input type="checkbox" value="greenhouse"> Greenhouse</label>
+                <label class="chip"><input type="checkbox" value="remotive" checked> Remotive</label>
+                <label class="chip"><input type="checkbox" value="remoteok" checked> RemoteOK</label>
+                <label class="chip warn"><input type="checkbox" value="infojobs"> InfoJobs *</label>
+                <label class="chip warn"><input type="checkbox" value="linkedin"> LinkedIn *</label>
+              </div>
+              <p class="hint">* InfoJobs e LinkedIn abrem navegador (podem pedir login)</p>
+              <label>Máx. por fonte</label>
+              <input type="number" id="limit" value="40" min="5" max="100">
+              <label>Máx. exibidas no total</label>
+              <input type="number" id="global_cap" value="" min="10" max="1000" placeholder="auto = por fonte × fontes">
+              <p class="hint">Ex.: 50 por fonte × 7 fontes → até 350 vagas. Filtre por fonte na aba Resultados.</p>
+              <label class="chip broad-toggle"><input type="checkbox" id="broad" checked> Busca ampla — traz o máximo; filtros refinados só reordenam</label>
+              <label class="chip"><input type="checkbox" id="only_new"> Só vagas novas (desde última busca)</label>
+              <label class="chip"><input type="checkbox" id="semantic" checked> Match profundo (semântico — mais lento)</label>
+              <label class="chip"><input type="checkbox" id="no_cache"> Buscar sem cache (dados frescos)</label>
+            </details>
+
+            <div class="search-actions">
+              <button class="go" id="go" onclick="search()">Buscar vagas</button>
+            </div>
+
+            <div class="label-row" style="margin-top:18px">
+              <label style="margin:0">Buscas salvas</label>
+              <span class="link" onclick="saveCurrentSearch()">+ salvar</span>
+            </div>
+            <div class="chips" id="savedSearches"></div>
+
+            <div class="label-row" style="margin-top:18px">
+              <label style="margin:0">Alertas de vagas</label>
+              <span class="link" onclick="saveAlert()">+ criar alerta</span>
+            </div>
+            <div class="chips" id="alertsList"></div>
+            <p class="hint">Alertas rodam automaticamente a cada 30 min (web e desktop). Use 🔕 para pausar.</p>
+          </div>
+        </div>
+
+        <div id="resultsTab" class="tab-pane">
+          <div id="results">
+            <div class="empty">
+              <div class="big">✈️</div>
+              Configure os filtros na aba <b>Buscar</b> e clique em <b>Buscar vagas</b>.
+              <p class="muted" style="margin-top:10px;font-size:13px">Vagas ranqueadas por compatibilidade — você escolhe onde aplicar.</p>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -186,6 +259,22 @@
   <div class="row" id="modalRow">
     <span id="modalLeft"></span>
     <button class="btn primary" onclick="document.getElementById('modal').close()">Fechar</button>
+  </div>
+</dialog>
+
+<dialog id="alertModal" class="alert-modal">
+  <div class="dh">
+    <span>Novo alerta</span>
+    <button class="x" type="button" onclick="document.getElementById('alertModal').close()">&times;</button>
+  </div>
+  <div class="body">
+    <p class="muted" style="font-size:13px;margin-bottom:10px">Salva os filtros atuais e avisa quando surgirem vagas novas.</p>
+    <label for="alertName">Nome do alerta</label>
+    <input type="text" id="alertName" placeholder="Ex.: PHP remoto júnior" maxlength="80">
+  </div>
+  <div class="row">
+    <button class="btn ghost" type="button" onclick="document.getElementById('alertModal').close()">Cancelar</button>
+    <button class="btn primary" type="button" onclick="confirmSaveAlert()">Criar alerta</button>
   </div>
 </dialog>
 

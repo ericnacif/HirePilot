@@ -143,24 +143,37 @@ class LinkedInClient:
         params.update(filters.linkedin_params())
         return f"{LINKEDIN_JOBS_URL}?{urlencode(params)}"
 
-    def search_jobs(self, max_jobs: int = 25) -> list[JobPosting]:
+    def search_jobs(self, max_jobs: int = 25, *, fetch_descriptions: bool = True) -> list[JobPosting]:
         """Busca vagas e coleta informações dos cards."""
         if not self.ensure_logged_in():
-            raise RuntimeError("Não foi possível confirmar login no LinkedIn.")
+            logger.warning("LinkedIn: login não confirmado.")
+            return []
 
         url = self.build_search_url()
         logger.info("Buscando vagas: %s", url)
-        self.page.goto(url, wait_until="domcontentloaded")
-        _human_delay(3, 5)
+        try:
+            self.page.goto(url, wait_until="domcontentloaded", timeout=45000)
+        except Exception as exc:
+            logger.warning("LinkedIn: falha ao abrir busca: %s", exc)
+            return []
+        _human_delay(2, 4)
 
         self._scroll_job_list(max_scrolls=5)
         jobs = self._collect_job_cards(max_jobs)
+        if not jobs:
+            return jobs
 
-        for i, job in enumerate(jobs):
-            logger.info("Coletando descrição %d/%d: %s", i + 1, len(jobs), job.title)
-            description = self._fetch_job_description(job.url)
-            job.description = description
-            _human_delay(1.5, 3)
+        if not fetch_descriptions:
+            return jobs
+
+        desc_limit = min(6, len(jobs))
+        for i, job in enumerate(jobs[:desc_limit]):
+            logger.info("Coletando descrição %d/%d: %s", i + 1, desc_limit, job.title)
+            try:
+                job.description = self._fetch_job_description(job.url)
+            except Exception as exc:
+                logger.debug("LinkedIn descrição %s: %s", job.title, exc)
+            _human_delay(1, 2)
 
         return jobs
 

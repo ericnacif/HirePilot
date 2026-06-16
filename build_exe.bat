@@ -4,7 +4,7 @@ cd /d "%~dp0"
 
 echo.
 echo  ========================================
-echo   VagaMatch - gerando executavel Windows
+echo   HirePilot - gerando executavel Windows
 echo  ========================================
 echo.
 
@@ -33,13 +33,13 @@ if errorlevel 1 (
 )
 
 echo [4/4] Concluido.
-if exist "dist\VagaMatch.exe" (
+if exist "dist\HirePilot.exe" (
   echo.
-  echo  Executavel pronto: dist\VagaMatch.exe
+  echo  Executavel pronto: dist\HirePilot.exe
   echo  Distribua esse arquivo para quem nao tem Python instalado.
   echo.
 ) else (
-  echo [ERRO] dist\VagaMatch.exe nao foi criado.
+  echo [ERRO] dist\HirePilot.exe nao foi criado.
   pause
   exit /b 1
 )

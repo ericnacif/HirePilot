@@ -4,6 +4,8 @@ from datetime import datetime, timezone
 
 from cv_apply.profile import JobPosting
 from cv_apply.sources import (
+    _active_queries,
+    _fair_cap,
     _gupy_keyword_candidates,
     _make_id,
     _parse_date,
@@ -63,8 +65,8 @@ def test_make_id_curto_e_hash_para_longo():
     assert len(gerado) < len(f"gupy:{longo}")
 
 
-def _job(jid, title, company, easy=False, desc=""):
-    return JobPosting(id=jid, title=title, company=company, url="http://x",
+def _job(jid, title, company, easy=False, desc="", url="http://x"):
+    return JobPosting(id=jid, title=title, company=company, url=url,
                       easy_apply=easy, description=desc)
 
 
@@ -80,7 +82,30 @@ def test_dedupe_remove_duplicatas_mantendo_melhor():
 
 def test_dedupe_mantem_vagas_distintas():
     jobs = [
-        _job("1", "Dev Python", "Acme"),
-        _job("2", "Designer", "Outra"),
+        _job("1", "Dev Python", "Acme", url="http://x/1"),
+        _job("2", "Designer", "Outra", url="http://x/2"),
     ]
     assert len(dedupe_jobs(jobs)) == 2
+
+
+def test_fair_cap_distribui_restante():
+    assert _fair_cap(40, 4) == 10
+    assert _fair_cap(7, 3, floor=8) == 7
+    assert _fair_cap(5, 1) == 5
+    assert _fair_cap(0, 2) == 0
+    assert _fair_cap(50, 8, broad=True) == 6
+    assert _fair_cap(5, 8, broad=True) == 1
+
+
+def test_active_queries_usa_search_queries():
+    from cv_apply.filters import SearchFilters
+
+    f = SearchFilters(keywords="php", search_queries=["python", "java"])
+    assert _active_queries(f) == ["python", "java"]
+
+
+def test_active_queries_cai_para_keywords():
+    from cv_apply.filters import SearchFilters
+
+    f = SearchFilters(keywords="desenvolvedor php")
+    assert _active_queries(f)[0] == "desenvolvedor php"

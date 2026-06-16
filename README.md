@@ -1,11 +1,14 @@
-# VagaMatch
+# HirePilot
+
+> **HirePilot** — seu copiloto inteligente para conquistar a vaga ideal.  
+> *(Repositório GitHub: `vagamatch` — nome legado do pacote Python.)*
 
 [![CI](https://github.com/ericnacif/vagamatch/actions/workflows/ci.yml/badge.svg)](https://github.com/ericnacif/vagamatch/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Ruff](https://img.shields.io/badge/lint-ruff-261230)](https://github.com/astral-sh/ruff)
 
-Aplicação Python que lê seu currículo, busca vagas em **várias plataformas** (LinkedIn, Gupy, InfoJobs, Remotive, RemoteOK), ranqueia por compatibilidade com matching semântico **gratuito/local**, analisa compatibilidade **ATS**, gera **carta de apresentação** (PT/EN) e prepara candidaturas — **você confirma o envio manualmente**.
+Aplicação Python que lê seu currículo, busca vagas em **várias plataformas** (LinkedIn, Gupy, Indeed, Greenhouse, InfoJobs, Remotive, RemoteOK), ranqueia por compatibilidade com matching semântico **gratuito/local**, analisa compatibilidade **ATS**, gera **carta de apresentação** (PT/EN) e prepara candidaturas — **você confirma o envio manualmente**.
 
 Tem uma **interface web reutilizável** (qualquer pessoa sobe o próprio currículo) e uma **CLI** completa.
 
@@ -15,11 +18,13 @@ Tem uma **interface web reutilizável** (qualquer pessoa sobe o próprio curríc
 |-------|---------------|-------|-------------|
 | `linkedin` | Navegador (Playwright) | Manual (1ª vez) | Easy Apply assistido |
 | `gupy` | API pública | Não | Link manual |
+| `indeed` | RSS Brasil | Não | Link manual |
+| `greenhouse` | API pública (boards US) | Não | Link manual |
 | `infojobs` | Navegador (Playwright) | Não | Link manual |
 | `remotive` | API pública (só remoto) | Não | Link manual |
 | `remoteok` | API pública (só remoto) | Não | Link manual |
 
-As APIs públicas (Gupy, Remotive, RemoteOK) são as mais estáveis e sem risco de bloqueio.
+As APIs públicas (Gupy, Remotive, RemoteOK, Indeed, Greenhouse) são as mais estáveis e sem risco de bloqueio.
 
 ## Aviso legal
 
@@ -86,23 +91,22 @@ docker run -p 5000:5000 -v vagamatch-data:/app/data vagamatch
 
 ### App desktop — executável Windows (.exe)
 
-Para quem **não tem Python** instalado: gere um único arquivo `VagaMatch.exe` que abre o
-navegador automaticamente (duplo clique e pronto).
+Para quem **não tem Python** instalado: um único `HirePilot.exe` que abre **uma janela
+nativa do app** (sem terminal preto e sem abrir o Chrome separado).
 
-**Gerar o executável** (só quem desenvolve precisa fazer isso uma vez):
+**Gerar o executável** (só quem desenvolve, uma vez):
 
 ```bat
 build_exe.bat
 ```
 
-O arquivo sai em `dist\VagaMatch.exe`. Distribua esse `.exe` — não é preciso instalar nada.
+O arquivo sai em `dist\HirePilot.exe`.
 
 **Usar o executável:**
 
-1. Dê duplo clique em `VagaMatch.exe`
-2. O navegador abre sozinho com a interface
-3. Mantenha a janela preta (console) aberta enquanto usa o app
-4. Feche a janela ou pressione Ctrl+C para encerrar
+1. Duplo clique em `HirePilot.exe`
+2. Abre a janela do HirePilot com a interface dentro
+3. Feche a janela para encerrar
 
 **O que vem no .exe (versão leve):**
 
@@ -113,14 +117,16 @@ O arquivo sai em `dist\VagaMatch.exe`. Distribua esse `.exe` — não é preciso
 | LinkedIn / InfoJobs (navegador) | Não |
 | Matching semântico (torch) | Não — usa palavras-chave |
 
-Os dados (currículos enviados) ficam em `%LOCALAPPDATA%\VagaMatch\data\`.
+Dados em `%LOCALAPPDATA%\VagaMatch\data\`. Requer **WebView2** (padrão no Windows 10/11).
 
-**Testar o modo desktop sem gerar o .exe** (com Python instalado):
+**Testar o modo app sem gerar o .exe:**
 
 ```bash
 pip install -r requirements-web.txt
 python run_app.py
 ```
+
+Para forçar abertura no navegador (debug): `set VAGAMATCH_BROWSER=1` e rode `python run_app.py`.
 
 ### Desenvolvimento
 
@@ -188,15 +194,15 @@ Coloque seu currículo na raiz do projeto (ex.: `meu_cv.pdf`) ou informe o camin
 python -m cv_apply web
 ```
 
-Abre no navegador uma interface (VagaMatch) que **qualquer pessoa** pode usar — cada um tem sua sessão isolada, sem precisar de conta:
+Abre no navegador a interface **HirePilot** que **qualquer pessoa** pode usar — cada um tem sua sessão isolada, sem precisar de conta:
 
 1. **Sobe o currículo** (PDF/DOCX) na tela inicial
 2. Recebe na hora o **perfil extraído** e a **nota ATS de formato** (anel de score)
 3. Preenche setor/cargo, localização e filtra por modelo de trabalho, tipo, nível e data
-4. Escolhe as fontes (Gupy, Remotive, RemoteOK por padrão; InfoJobs/LinkedIn abrem navegador)
-5. Vê as vagas **ordenadas por compatibilidade**, cada uma com **% ATS** e skills em comum
-6. Em cada vaga: **Aplicar**, **Análise ATS** (cobertura + palavras faltando), **Adaptar currículo**, **Carta** e **Já apliquei** (acompanhamento)
-7. **Comparar até 3 vagas** lado a lado e abrir o **Painel** com estatísticas (candidaturas, score médio, favoritos) e histórico
+4. Escolhe as fontes (Gupy, Indeed, Remotive, RemoteOK por padrão; InfoJobs/LinkedIn abrem navegador)
+5. Vê as vagas **ordenadas por compatibilidade**, com barras de **match** e **ATS**
+6. Em cada vaga: **Aplicar**, **Análise ATS**, **Adaptar currículo**, **Carta** e **Já apliquei** (marca manualmente)
+7. **Alertas** de vagas novas (web e desktop, a cada 30 min) e **busca sem cache**
 
 Qualidade da busca (uniforme em todas as fontes):
 

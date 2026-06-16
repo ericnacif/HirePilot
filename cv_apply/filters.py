@@ -74,6 +74,8 @@ class SearchFilters:
     job_type: list[str] = field(default_factory=list)
     experience: list[str] = field(default_factory=list)
     date_posted: str = "qualquer"
+    search_queries: list[str] = field(default_factory=list)
+    broad_mode: bool = True
 
     @classmethod
     def from_settings(cls, settings) -> SearchFilters:
@@ -84,6 +86,8 @@ class SearchFilters:
             job_type=list(settings.search_job_type),
             experience=list(settings.search_experience),
             date_posted=settings.search_date_posted,
+            search_queries=list(getattr(settings, "search_queries", None) or []),
+            broad_mode=getattr(settings, "broad_mode", True),
         )
 
     # ----- LinkedIn -----

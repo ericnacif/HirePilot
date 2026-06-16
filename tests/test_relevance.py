@@ -5,12 +5,16 @@ from cv_apply.relevance import (
     detect_seniority_levels,
     extract_query_terms,
     filter_by_experience,
+    filter_by_location,
     filter_by_relevance,
 )
 
 
-def _job(title, description=""):
-    return JobPosting(id=title, title=title, company="X", url="u", description=description)
+def _job(title, description="", location=""):
+    return JobPosting(
+        id=title, title=title, company="X", url="u",
+        description=description, location=location,
+    )
 
 
 def test_detect_seniority_levels():
@@ -76,3 +80,21 @@ def test_filter_by_relevance_sem_termos():
 def test_filter_by_relevance_sem_fallback_pode_zerar():
     jobs = [_job("Desenvolvedor Python"), _job("Desenvolvedor Java")]
     assert filter_by_relevance(jobs, ["cobol"], fallback=False) == []
+
+
+def test_filter_by_location_brasil_mantem_remoto_e_br():
+    jobs = [
+        _job("Dev", "", "Remoto"),
+        _job("Dev", "", "São Paulo, SP"),
+        _job("Dev", "", "Berlin, Germany"),
+    ]
+    out = filter_by_location(jobs, "Brasil")
+    locs = [j.location for j in out]
+    assert "Remoto" in locs
+    assert "São Paulo, SP" in locs
+    assert "Berlin, Germany" not in locs
+
+
+def test_filter_by_location_fallback_quando_nada_bate():
+    jobs = [_job("Dev", "", "Tokyo, Japan")]
+    assert filter_by_location(jobs, "Brasil") == jobs

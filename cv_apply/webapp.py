@@ -13,6 +13,7 @@ import io
 import json
 import logging
 import os
+import queue
 import sys
 import threading
 import time
@@ -31,16 +32,12 @@ from werkzeug.utils import secure_filename
 from cv_apply.ats import analyze_ats, analyze_resume_format
 from cv_apply.config import get_settings
 from cv_apply.cover_letter import generate_cover_letter
-from cv_apply.matching import rank_jobs
 from cv_apply.profile import CandidateProfile, JobPosting
-from cv_apply.relevance import (
-    extract_query_terms,
-    filter_by_experience,
-    filter_by_relevance,
-)
 from cv_apply.resume_parser import parse_resume
-from cv_apply.sectors import apply_sector_boost, sector_gate_terms, sector_query
-from cv_apply.sources import AVAILABLE_SOURCES, dedupe_jobs, run_sources
+from cv_apply.salary import extract_salary
+from cv_apply.search_pipeline import apply_payload_to_settings, execute_search
+from cv_apply.sources import AVAILABLE_SOURCES
+from cv_apply.storage import Storage
 from cv_apply.tailor import tailor_resume_markdown
 
 logger = logging.getLogger(__name__)
@@ -77,6 +74,7 @@ RATE_LIMIT_WINDOW = 60  # segundos
 RATE_LIMIT_MAX = int(os.getenv("RATE_LIMIT_MAX", "30"))  # requisições/janela
 SEARCH_RATE_MAX = int(os.getenv("SEARCH_RATE_MAX", "8"))  # buscas/janela
 MAX_SESSIONS = 200
+_alert_hits: list[dict] = []
 
 
 # --------------------------------------------------------------------------- #
@@ -149,6 +147,83 @@ class SessionStore:
 
 
 store = SessionStore()
+
+
+def _db() -> Storage:
+    return Storage(get_settings().data_dir)
+
+
+def _suggest_keywords(profile: CandidateProfile) -> str:
+    if profile.skills:
+        return ", ".join(profile.skills[:3])
+    if profile.job_titles:
+        return profile.job_titles[0]
+    return ""
+
+
+def _warmup_semantic() -> None:
+    settings = get_settings()
+    if not settings.use_semantic_matching:
+        return
+
+    def _load() -> None:
+        try:
+            from cv_apply.matching import _get_semantic_model
+
+            _get_semantic_model()
+            logger.info("Modelo semântico pré-carregado.")
+        except Exception as exc:
+            logger.warning("Warm-up semântico falhou: %s", exc)
+
+    threading.Thread(target=_load, name="semantic-warmup", daemon=True).start()
+
+
+def _run_search(
+    sess: SessionData,
+    data: dict,
+    sid: str,
+    *,
+    on_source_done=None,
+    on_partial=None,
+) -> dict:
+    """Executa busca e devolve payload JSON."""
+    settings = get_settings()
+    db = _db()
+    seen = db.get_seen_ids(sid)
+    ctx = apply_payload_to_settings(data, settings)
+    ctx.seen_job_ids = seen
+    if data.get("only_new"):
+        ctx.only_new = True
+
+    sources = [s.lower() for s in data.get("sources", []) if s.lower() in AVAILABLE_SOURCES]
+    settings.search_sources = sources or ["gupy"]
+
+    applied_ids = set(sess.applied) | set(db.get_web_state(sid)["applied"].keys())
+
+    result = execute_search(
+        sess.profile,
+        settings,
+        ctx,
+        applied_ids=applied_ids,
+        format_posted=_format_posted,
+        on_source_done=on_source_done,
+        on_partial=on_partial,
+        use_cache=not data.get("no_cache"),
+    )
+
+    sess.jobs = result.job_models
+    sess.source_by_job = result.source_by_id
+    sess.last_results = result.jobs
+    if result.all_seen_ids:
+        db.mark_seen_jobs(sid, result.all_seen_ids)
+    if result.job_models:
+        db.save_jobs(list(result.job_models.values()))
+
+    return {
+        "jobs": result.jobs,
+        "sources": result.sources_status,
+        "meta": result.meta,
+    }
 
 
 def _cleanup_stale_uploads(upload_dir: Path, retention_seconds: int = UPLOAD_RETENTION_SECONDS) -> None:
@@ -315,11 +390,14 @@ def api_upload():
     sess.resume_path = dest
     sess.jobs.clear()
     sess.source_by_job.clear()
+    _db().save_profile(profile)
+    _db().save_web_profile(sid, profile)
 
     summary = _profile_summary(profile, dest)
     summary["job_hint"] = profile.job_titles[0] if profile.job_titles else (
         " ".join(profile.skills[:2]) if profile.skills else "desenvolvedor"
     )
+    summary["suggested_keywords"] = _suggest_keywords(profile)
     return jsonify({"profile": summary})
 
 
@@ -329,84 +407,164 @@ def api_search(sess: SessionData):
     if not sess.rate_ok("search", SEARCH_RATE_MAX, RATE_LIMIT_WINDOW):
         return jsonify({"error": "Muitas buscas seguidas. Aguarde alguns segundos."}), 429
     data = request.get_json(silent=True) or {}
-    settings = get_settings()
+    sid = _sid()
+    try:
+        return jsonify(_run_search(sess, data, sid))
+    except Exception:
+        logger.exception("Erro na busca")
+        return jsonify({"error": "Erro na busca. Tente novamente."}), 500
 
-    # Query: o que o usuário digita é prioritário (ex.: "php"); o setor só entra
-    # como termo de busca quando não há palavras-chave (e sempre pesa no ranking).
-    user_keywords = (data.get("keywords") or "").strip()
-    sector = data.get("sector", "")
-    settings.search_keywords = user_keywords or sector_query(sector) or "desenvolvedor"
 
-    settings.search_location = data.get("location") or "Brasil"
-    settings.search_workplace = [w.lower() for w in data.get("workplace", [])]
-    settings.search_job_type = [j.lower() for j in data.get("job_type", [])]
-    settings.search_experience = [e.lower() for e in data.get("experience", [])]
-    settings.search_date_posted = (data.get("date_posted") or "qualquer").lower()
-    sources = [s.lower() for s in data.get("sources", []) if s.lower() in AVAILABLE_SOURCES]
-    settings.search_sources = sources or ["gupy"]
-    limit = max(1, min(int(data.get("limit") or 20), 100))
+@app.route("/api/search/stream", methods=["POST"])
+@require_profile
+def api_search_stream(sess: SessionData):
+    if not sess.rate_ok("search", SEARCH_RATE_MAX, RATE_LIMIT_WINDOW):
+        return jsonify({"error": "Muitas buscas seguidas. Aguarde alguns segundos."}), 429
+    data = request.get_json(silent=True) or {}
+    sid = _sid()
 
-    results = run_sources(settings, max_jobs=limit, on_log=lambda m: logger.info(m))
+    def generate():
+        q: queue.Queue = queue.Queue()
+        holder: dict = {}
 
-    source_by_id: dict[str, str] = {}
-    all_jobs: list[JobPosting] = []
-    for src_name, jobs in results.items():
-        for job in jobs:
-            source_by_id[job.id] = src_name
-            all_jobs.append(job)
+        def on_source(name: str, jobs: list) -> None:
+            q.put({"event": "source", "source": name, "fetched": len(jobs), "count": len(jobs)})
 
-    # Status por fonte (antes da deduplicação) para a interface informar o usuário
-    sources_status = [
-        {"source": name, "count": len(results.get(name, []))}
-        for name in settings.search_sources
-        if name in AVAILABLE_SOURCES
-    ]
+        def on_partial(result) -> None:
+            q.put({
+                "event": "partial",
+                "jobs": result.jobs,
+                "sources": result.sources_status,
+                "meta": result.meta,
+            })
 
-    if not all_jobs:
-        return jsonify({"jobs": [], "sources": sources_status})
+        def worker() -> None:
+            try:
+                holder["payload"] = _run_search(
+                    sess, data, sid,
+                    on_source_done=on_source,
+                    on_partial=on_partial,
+                )
+            except Exception as exc:
+                holder["error"] = str(exc)
+            finally:
+                q.put({"event": "_done"})
 
-    all_jobs = dedupe_jobs(all_jobs)
+        threading.Thread(target=worker, daemon=True).start()
+        while True:
+            item = q.get()
+            if item.get("event") == "_done":
+                if holder.get("error"):
+                    yield f"data: {json.dumps({'event': 'error', 'error': holder['error']}, ensure_ascii=False)}\n\n"
+                else:
+                    yield f"data: {json.dumps({'event': 'complete', **holder['payload']}, ensure_ascii=False)}\n\n"
+                break
+            yield f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
 
-    # Filtros de relevância (uniformes a todas as fontes):
-    # 1) senioridade — remove vagas cujo nível contradiz o nível pedido;
-    # 2) termos — garante que a busca traga vagas da área/termo certo. Se o
-    #    usuário digitou algo específico (ex.: "php"), usamos isso; senão, usamos
-    #    os termos característicos do setor para cortar o ruído.
-    all_jobs = filter_by_experience(all_jobs, settings.search_experience)
-    user_terms = extract_query_terms(user_keywords)
-    gate_terms = user_terms or sector_gate_terms(sector)
-    # Sem fallback: preferimos "nada encontrado" a devolver vagas irrelevantes.
-    all_jobs = filter_by_relevance(all_jobs, gate_terms, fallback=False)
-    if not all_jobs:
-        return jsonify({"jobs": [], "sources": sources_status})
-
-    matches = rank_jobs(
-        sess.profile, all_jobs, min_score=0, use_semantic=settings.use_semantic_matching
+    return Response(
+        generate(),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
-    matches = apply_sector_boost(matches, sector)
 
-    sess.jobs = {}
-    sess.source_by_job = source_by_id
 
-    out = []
-    for m in matches:
-        sess.jobs[m.job.id] = m.job
-        report = analyze_ats(sess.profile, m.job, resume_path=None)  # só cobertura (rápido)
-        desc = (m.job.description or "").strip().replace("\n", " ")
-        if len(desc) > 220:
-            desc = desc[:220].rsplit(" ", 1)[0] + "…"
-        out.append({
-            "id": m.job.id, "title": m.job.title, "company": m.job.company,
-            "location": m.job.location, "url": m.job.url, "score": m.score,
-            "ats": report.keyword_coverage, "skills": m.skill_overlap[:8],
-            "reasons": "; ".join(m.reasons[:2]),
-            "source": source_by_id.get(m.job.id, ""),
-            "posted_at": _format_posted(m.job.posted_at), "easy_apply": m.job.easy_apply,
-            "description": desc,
-            "applied": m.job.id in sess.applied,
-        })
-    sess.last_results = out
-    return jsonify({"jobs": out, "sources": sources_status})
+@app.route("/api/job/detail", methods=["POST"])
+@require_profile
+def api_job_detail(sess: SessionData):
+    data = request.get_json(silent=True) or {}
+    job = sess.jobs.get(data.get("id"))
+    if not job:
+        return jsonify({"error": "Vaga não encontrada — refaça a busca."}), 404
+    _, _, sal = extract_salary(job)
+    return jsonify({
+        "id": job.id,
+        "title": job.title,
+        "company": job.company,
+        "location": job.location,
+        "url": job.url,
+        "description": job.description,
+        "salary": sal,
+        "source": sess.source_by_job.get(job.id, ""),
+        "posted_at": _format_posted(job.posted_at),
+        "easy_apply": job.easy_apply,
+    })
+
+
+@app.route("/api/state", methods=["GET"])
+def api_state_get():
+    sid = _sid()
+    return jsonify(_db().get_web_state(sid))
+
+
+@app.route("/api/state/favorite", methods=["POST"])
+def api_state_favorite():
+    data = request.get_json(silent=True) or {}
+    sid = _sid()
+    job_id = data.get("id")
+    if not job_id:
+        return jsonify({"error": "id ausente"}), 400
+    db = _db()
+    if data.get("favorite"):
+        db.save_favorite(sid, job_id, data.get("meta") or {"id": job_id})
+    else:
+        db.remove_favorite(sid, job_id)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/state/applied", methods=["POST"])
+def api_state_applied():
+    data = request.get_json(silent=True) or {}
+    sid = _sid()
+    job_id = data.get("id")
+    if not job_id:
+        return jsonify({"error": "id ausente"}), 400
+    db = _db()
+    if data.get("applied"):
+        meta = data.get("meta") or {"id": job_id}
+        db.save_applied_meta(sid, job_id, meta)
+    else:
+        db.remove_applied_meta(sid, job_id)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/alerts", methods=["GET", "POST", "DELETE"])
+@require_profile
+def api_alerts(sess: SessionData):
+    sid = _sid()
+    db = _db()
+    if request.method == "GET":
+        return jsonify({"alerts": db.get_web_state(sid)["alerts"]})
+    data = request.get_json(silent=True) or {}
+    if request.method == "DELETE":
+        alert_id = int(data.get("id", 0))
+        if alert_id:
+            db.delete_alert(sid, alert_id)
+        return jsonify({"ok": True})
+    name = (data.get("name") or "").strip()
+    filters = data.get("filters")
+    if not name or not filters:
+        return jsonify({"error": "Nome e filtros são obrigatórios."}), 400
+    aid = db.save_alert(sid, name, filters, data.get("id"))
+    return jsonify({"ok": True, "id": aid})
+
+
+@app.route("/api/alerts/toggle", methods=["POST"])
+@require_profile
+def api_alerts_toggle(sess: SessionData):
+    sid = _sid()
+    data = request.get_json(silent=True) or {}
+    alert_id = int(data.get("id", 0))
+    if not alert_id:
+        return jsonify({"error": "id ausente"}), 400
+    _db().set_alert_enabled(sid, alert_id, bool(data.get("enabled", True)))
+    return jsonify({"ok": True})
+
+
+@app.route("/api/alerts/hits", methods=["GET"])
+def api_alert_hits():
+    global _alert_hits
+    hits, _alert_hits = list(_alert_hits), []
+    return jsonify({"hits": hits})
 
 
 @app.route("/api/ats", methods=["POST"])
@@ -445,10 +603,31 @@ _EXPORT_COLUMNS = [
 
 @app.route("/api/export")
 def api_export():
-    """Exporta as últimas vagas buscadas em CSV ou JSON."""
+    """Exporta vagas (opcionalmente filtradas por fonte / favoritas / aplicadas)."""
     sess = store.get(_sid())
-    rows = sess.last_results if sess else []
+    rows = list(sess.last_results if sess else [])
     fmt = (request.args.get("format") or "csv").lower()
+    source = (request.args.get("source") or "").strip()
+    favorites_only = request.args.get("favorites") == "1"
+    hide_applied = request.args.get("hide_applied") == "1"
+
+    if source or favorites_only or hide_applied:
+        sid = _sid()
+        state = _db().get_web_state(sid)
+        fav_ids = set(state.get("favorites", {}).keys())
+        applied_ids = set(state.get("applied", {}).keys())
+        if sess:
+            applied_ids |= sess.applied
+        filtered = []
+        for row in rows:
+            if source and row.get("source") != source:
+                continue
+            if favorites_only and row.get("id") not in fav_ids:
+                continue
+            if hide_applied and (row.get("applied") or row.get("id") in applied_ids):
+                continue
+            filtered.append(row)
+        rows = filtered
 
     if fmt == "json":
         payload = json.dumps(rows, ensure_ascii=False, indent=2)
@@ -488,8 +667,10 @@ def api_applied(sess: SessionData):
         return jsonify({"error": "id ausente"})
     if data.get("applied"):
         sess.applied.add(job_id)
+        _db().save_applied_meta(_sid(), job_id, data.get("meta") or {"id": job_id})
     else:
         sess.applied.discard(job_id)
+        _db().remove_applied_meta(_sid(), job_id)
     return jsonify({"ok": True, "applied": job_id in sess.applied})
 
 
@@ -547,6 +728,18 @@ def run_server(
 ) -> None:
     settings = get_settings()
     _cleanup_stale_uploads(settings.data_dir / "uploads")
+    _warmup_semantic()
+
+    def _notify_hits(hits: list[dict]) -> None:
+        global _alert_hits
+        _alert_hits.extend(hits)
+        for h in hits:
+            logger.info("Alerta '%s': %d vaga(s) nova(s)", h.get("name"), h.get("new_count"))
+
+    from cv_apply.alert_scheduler import start_alert_scheduler
+
+    start_alert_scheduler(settings.data_dir, on_hits=_notify_hits)
+
     if free_port and _port_in_use(host, port):
         logger.info("Porta %d ocupada — tentando liberar (servidor antigo?)...", port)
         _free_port(host, port)

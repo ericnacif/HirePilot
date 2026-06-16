@@ -105,6 +105,85 @@ def _term_in_text(term: str, text: str) -> bool:
     return _strip_accents(term) in _strip_accents(text)
 
 
+def term_in_job_text(term: str, text: str) -> bool:
+    """API pública para checar se um termo aparece no texto da vaga."""
+    return _term_in_text(term, text)
+
+
+_REMOTE_LOCATION_HINTS = (
+    "remoto", "remote", "home office", "home-office", "anywhere",
+    "worldwide", "global", "distributed", "híbrido", "hibrido", "hybrid",
+)
+
+_BRAZIL_HINTS = ("brasil", "brazil", "br ", " - br", "(br)")
+
+_BRAZIL_STATES = (
+    "acre", "alagoas", "amapa", "amazonas", "bahia", "ceara", "distrito federal",
+    "espirito santo", "goias", "maranhao", "mato grosso", "mato grosso do sul",
+    "minas gerais", "para", "paraiba", "parana", "pernambuco", "piaui",
+    "rio de janeiro", "rio grande do norte", "rio grande do sul",
+    "rondonia", "roraima", "santa catarina", "sao paulo", "sergipe", "tocantins",
+)
+
+_FOREIGN_LOCATION_HINTS = (
+    "usa", "united states", "u.s.", "uk", "united kingdom", "london", "germany",
+    "berlin", "france", "paris", "canada", "toronto", "india", "mexico", "méxico",
+    "argentina", "chile", "colombia", "portugal", "lisboa", "europe", "europa",
+    "asia", "africa", "australia", "japan", "tokyo", "china", "singapore",
+)
+
+
+def _location_matches_wanted(job_location: str, wanted: str) -> bool:
+    """True se a localização da vaga é compatível com o filtro do usuário."""
+    loc = _strip_accents((job_location or "").strip())
+    if not loc:
+        return True  # sem localização → não descarta
+
+    if any(h in loc for h in _REMOTE_LOCATION_HINTS):
+        return True
+
+    want = _strip_accents((wanted or "").strip())
+    if not want or want in ("qualquer", "anywhere", "global", "mundo"):
+        return True
+
+    if want in ("brasil", "brazil"):
+        if any(h in loc for h in _BRAZIL_HINTS):
+            return True
+        if any(st in loc for st in _BRAZIL_STATES):
+            return True
+        if re.search(
+            r"\b(sp|rj|mg|pr|rs|sc|ba|pe|ce|df|go|es|am|pa|ma|mt|ms|pb|rn|al|se|pi|ro|ac|ap|rr|to)\b",
+            loc,
+        ):
+            return True
+        if any(f in loc for f in _FOREIGN_LOCATION_HINTS):
+            return False
+        # Gupy costuma usar "Cidade, Estado" — sem sinal estrangeiro, assume BR
+        if "," in loc:
+            return True
+        return want in loc
+
+    return want in loc
+
+
+def filter_by_location(
+    jobs: list[JobPosting], location: str, *, fallback: bool = True
+) -> list[JobPosting]:
+    """Mantém vagas cuja localização combina com ``location`` (ex.: Brasil, SP).
+
+    Vagas remotas passam sempre. Se o filtro eliminar tudo e ``fallback`` for
+    verdadeiro, devolve a lista original.
+    """
+    wanted = (location or "").strip()
+    if not wanted or _strip_accents(wanted) in ("qualquer", "anywhere", "global"):
+        return jobs
+
+    kept = [j for j in jobs if _location_matches_wanted(j.location, wanted)]
+    if kept or not fallback:
+        return kept
+    return jobs
+
+
 def filter_by_relevance(
     jobs: list[JobPosting], terms: list[str], fallback: bool = True
 ) -> list[JobPosting]:
