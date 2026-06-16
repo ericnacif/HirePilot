@@ -1,25 +1,25 @@
-"""Importa logos enviadas pelo usuário para cv_apply/static/."""
+"""Importa logos de brand_assets/ para cv_apply/static/.
+
+Coloque na pasta brand_assets/ (não versionada):
+  - logo-source.png      — ícone sozinho (fundo escuro ok)
+  - wordmark-source.png  — logo com texto HirePilot
+
+Uso: python scripts/import_brand_assets.py
+"""
 
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
-ASSETS = Path(
-    r"C:/Users/Levex/.cursor/projects/c-Users-Levex-Desktop-LOGOS-PNG-eric/assets"
-)
+BRAND_DIR = ROOT / "brand_assets"
 STATIC = ROOT / "cv_apply" / "static"
 
-ICON_SRC = ASSETS / (
-    "c__Users_Levex_AppData_Roaming_Cursor_User_workspaceStorage_"
-    "a8ea636a7fe656e6b853e8210a475330_images_image-8e54e566-ab86-4862-9424-2f6d29433aa1.png"
-)
-WORDMARK_SRC = ASSETS / (
-    "c__Users_Levex_AppData_Roaming_Cursor_User_workspaceStorage_"
-    "a8ea636a7fe656e6b853e8210a475330_images_image-f09160d6-65e4-48d3-a2f6-23d1e885b169.png"
-)
+DEFAULT_ICON = BRAND_DIR / "logo-source.png"
+DEFAULT_WORDMARK = BRAND_DIR / "wordmark-source.png"
 
 INK = (26, 32, 48, 255)  # #1A2030
 
@@ -109,14 +109,32 @@ def _wordmark_light(img: Image.Image) -> Image.Image:
     return rgba
 
 
+def _resolve_src(path: Path | None, default: Path) -> Path:
+    src = path or default
+    if not src.is_file():
+        raise SystemExit(
+            f"Arquivo não encontrado: {src}\n"
+            f"Coloque as imagens em {BRAND_DIR}/ ou passe --icon / --wordmark."
+        )
+    return src
+
+
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Processa logos para cv_apply/static/")
+    parser.add_argument("--icon", type=Path, help="PNG do ícone (padrão: brand_assets/logo-source.png)")
+    parser.add_argument("--wordmark", type=Path, help="PNG com texto (padrão: brand_assets/wordmark-source.png)")
+    args = parser.parse_args()
+
+    icon_src = _resolve_src(args.icon, DEFAULT_ICON)
+    wordmark_src = _resolve_src(args.wordmark, DEFAULT_WORDMARK)
+
     STATIC.mkdir(parents=True, exist_ok=True)
 
-    icon = _remove_black_bg(_crop_content(Image.open(ICON_SRC)))
+    icon = _remove_black_bg(_crop_content(Image.open(icon_src)))
     icon.save(STATIC / "logo.png", optimize=True)
     print(f"logo.png: {icon.size}")
 
-    wordmark = _remove_black_bg(_crop_content(Image.open(WORDMARK_SRC)))
+    wordmark = _remove_black_bg(_crop_content(Image.open(wordmark_src)))
     wordmark.save(STATIC / "logo-wordmark.png", optimize=True)
     print(f"logo-wordmark.png: {wordmark.size}")
 

@@ -1,33 +1,83 @@
+# --- Python ---
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
-.env
+*.pyo
+*.egg
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+htmlcov/
+coverage.xml
+*.cover
+
+# --- Ambiente virtual ---
 .venv/
 venv/
 env/
-*.egg-info/
-dist/
+ENV/
+
+# --- Segredos e config local ---
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# --- Build / release ---
 build/
+dist/
+*.spec.bak
 installer/hirepilot-built.iss
-.pytest_cache/
-.mypy_cache/
+
+# --- Dados do app (local / desktop) ---
 data/
 uploads/
 browser_data/
+**/playwright-browsers/
 *.db
 *.sqlite3
 *.log
-.coverage
-htmlcov/
 
-# Currículos e arquivos pessoais enviados localmente
+# --- Currículos e documentos pessoais ---
 *.pdf
 *.doc
+*.doc
 *.docx
+meu_cv.*
 !README.md
 !requirements.txt
-!.env.example
+!LEIA-ME.txt
+!INSTALAR.md
+!CHANGELOG.md
+
+# --- Fontes brutas de logo (processadas ficam em cv_apply/static/) ---
+brand_assets/*
+!brand_assets/.gitkeep
+
+# --- Cursor / agentes / IDE ---
+.cursor/
+.cursorrules
+.cursorignore
+.agent/
+agent-transcripts/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# --- OS ---
 .DS_Store
 Thumbs.db
+desktop.ini
+ehthumbs.db
+
+# --- Node (se usar ferramentas front no futuro) ---
+node_modules/
