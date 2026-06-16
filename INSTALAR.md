@@ -40,7 +40,7 @@ Guia para quem **não precisa** instalar Python nem usar terminal.
 
 Tudo fica no seu PC, em:
 
-`%LOCALAPPDATA%\VagaMatch\data\`
+`%LOCALAPPDATA%\HirePilot\data\`
 
 Currículo enviado, favoritos e histórico **não vão para a nuvem**.
 

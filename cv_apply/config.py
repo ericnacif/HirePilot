@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import logging
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -11,7 +13,70 @@ from pydantic import BaseModel, Field
 
 load_dotenv()
 
+logger = logging.getLogger(__name__)
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _legacy_writable_bases() -> list[Path]:
+    """Pastas de dados usadas antes do rebrand para HirePilot."""
+    home = Path(os.path.expanduser("~"))
+    if sys.platform.startswith("win"):
+        root = Path(os.getenv("LOCALAPPDATA") or home)
+        return [root / "VagaMatch"]
+    return [home / ".vagamatch"]
+
+
+def _user_writable_base() -> Path:
+    """Pasta estável do usuário quando o app roda como executável empacotado."""
+    if sys.platform.startswith("win"):
+        root = os.getenv("LOCALAPPDATA") or os.path.expanduser("~")
+        return Path(root) / "HirePilot"
+    return Path(os.path.expanduser("~")) / ".hirepilot"
+
+
+def _migrate_legacy_data(new_base: Path, *, legacy_bases: list[Path] | None = None) -> None:
+    """Move dados de VagaMatch/.vagamatch para HirePilot/.hirepilot (uma vez)."""
+    marker = new_base / ".migrated_from_legacy"
+    if marker.exists():
+        return
+
+    bases = legacy_bases if legacy_bases is not None else _legacy_writable_bases()
+    for old_base in bases:
+        if not old_base.is_dir() or old_base.resolve() == new_base.resolve():
+            continue
+        try:
+            has_content = any(old_base.iterdir())
+        except OSError:
+            continue
+        if not has_content:
+            continue
+
+        new_base.mkdir(parents=True, exist_ok=True)
+        migrated_from = None
+        for item in old_base.iterdir():
+            dest = new_base / item.name
+            if dest.exists():
+                logger.debug("Migração: destino já existe, pulando %s", dest)
+                continue
+            try:
+                shutil.move(str(item), str(dest))
+                migrated_from = old_base
+            except OSError as exc:
+                logger.warning("Não foi possível migrar %s → %s: %s", item, dest, exc)
+
+        if migrated_from is None:
+            continue
+
+        try:
+            if old_base.is_dir() and not any(old_base.iterdir()):
+                old_base.rmdir()
+        except OSError:
+            pass
+
+        marker.write_text(str(migrated_from), encoding="utf-8")
+        logger.info("Dados migrados de %s para %s", migrated_from, new_base)
+        return
 
 
 def _writable_base() -> Path:
@@ -19,13 +84,12 @@ def _writable_base() -> Path:
 
     No executável empacotado (PyInstaller), ``PROJECT_ROOT`` aponta para uma
     pasta temporária somente-leitura; usamos então uma pasta estável do usuário
-    (``%LOCALAPPDATA%\\VagaMatch`` no Windows, ``~/.vagamatch`` nos demais).
+    (``%LOCALAPPDATA%\\HirePilot`` no Windows, ``~/.hirepilot`` nos demais).
     """
     if getattr(sys, "frozen", False):
-        if sys.platform.startswith("win"):
-            root = os.getenv("LOCALAPPDATA") or os.path.expanduser("~")
-            return Path(root) / "VagaMatch"
-        return Path(os.path.expanduser("~")) / ".vagamatch"
+        new_base = _user_writable_base()
+        _migrate_legacy_data(new_base)
+        return new_base
     return PROJECT_ROOT
 
 

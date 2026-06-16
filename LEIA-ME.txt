@@ -16,6 +16,6 @@ Edições:
 - HirePilot.exe — Leve (rápido, fontes via API)
 - HirePilot-Full.exe — Completa (LinkedIn/InfoJobs; na 1ª vez baixa o navegador ~150 MB)
 
-Dados ficam só no seu PC: %LOCALAPPDATA%\VagaMatch\data\
+Dados ficam só no seu PC: %LOCALAPPDATA%\HirePilot\data\
 
 Atualizações: https://github.com/ericnacif/HirePilot/releases

@@ -13,11 +13,32 @@ let HIDE_APPLIED = false;
 let SEARCH_ABORT = null;
 let SEARCH_GEN = 0;
 
-const FILTERS_KEY = "vagamatch.filters";
-const FAVORITES_KEY = "vagamatch.favorites";
-const APPLIED_KEY = "vagamatch.applied";
-const THEME_KEY = "vagamatch.theme";
-const SAVED_KEY = "vagamatch.savedSearches";
+const LS_PREFIX = "hirepilot.";
+const LS_LEGACY_PREFIX = "vagamatch.";
+
+function migrateLegacyLocalStorage() {
+  if (localStorage.getItem(LS_PREFIX + "migrated")) return;
+  const keys = [
+    "filters", "favorites", "applied", "theme", "savedSearches",
+    "onboarded", "updateDismiss",
+  ];
+  for (const k of keys) {
+    const oldKey = LS_LEGACY_PREFIX + k;
+    const newKey = LS_PREFIX + k;
+    const val = localStorage.getItem(oldKey);
+    if (val === null) continue;
+    if (localStorage.getItem(newKey) === null) localStorage.setItem(newKey, val);
+    localStorage.removeItem(oldKey);
+  }
+  localStorage.setItem(LS_PREFIX + "migrated", "1");
+}
+migrateLegacyLocalStorage();
+
+const FILTERS_KEY = LS_PREFIX + "filters";
+const FAVORITES_KEY = LS_PREFIX + "favorites";
+const APPLIED_KEY = LS_PREFIX + "applied";
+const THEME_KEY = LS_PREFIX + "theme";
+const SAVED_KEY = LS_PREFIX + "savedSearches";
 
 /* ---------- helpers ---------- */
 function $(id) { return document.getElementById(id); }
@@ -1172,8 +1193,8 @@ function scrollToResults() {
 })();
 
 /* ---------- versão, atualização, onboarding ---------- */
-const ONBOARD_KEY = "vagamatch.onboarded";
-const UPDATE_DISMISS_KEY = "vagamatch.updateDismiss";
+const ONBOARD_KEY = LS_PREFIX + "onboarded";
+const UPDATE_DISMISS_KEY = LS_PREFIX + "updateDismiss";
 let APP_VERSION = "0.0.0";
 
 function finishOnboard() {

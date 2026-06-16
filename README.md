@@ -116,7 +116,7 @@ O arquivo sai em `dist\HirePilot.exe`.
 | LinkedIn / InfoJobs (navegador) | Não |
 | Matching semântico (torch) | Não — usa TF-IDF local |
 
-Dados em `%LOCALAPPDATA%\VagaMatch\data\`. Requer **WebView2** (padrão no Windows 10/11).
+Dados em `%LOCALAPPDATA%\HirePilot\data\`. Requer **WebView2** (padrão no Windows 10/11).
 
 ### Distribuir para um amigo (sem código)
 
