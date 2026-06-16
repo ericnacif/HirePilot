@@ -2,7 +2,12 @@
 
 from cv_apply.matching import match_job
 from cv_apply.profile import CandidateProfile, JobPosting
-from cv_apply.sectors import apply_sector_boost, sector_skills
+from cv_apply.sectors import (
+    apply_sector_boost,
+    sector_gate_terms,
+    sector_query,
+    sector_skills,
+)
 
 
 def _match(title, description, score=None):
@@ -20,6 +25,21 @@ def test_sector_skills_conhecido_e_desconhecido():
     assert "sql" in sector_skills("tec_dados")
     assert sector_skills("inexistente") == []
     assert sector_skills("") == []
+
+
+def test_sector_query_primario():
+    assert sector_query("tec_dev") == "desenvolvedor"
+    assert sector_query("fiscal") == "fiscal"
+    assert sector_query("inexistente") == ""
+
+
+def test_sector_gate_terms_inclui_skills_e_termo():
+    terms = sector_gate_terms("tec_dev")
+    assert "python" in terms and "php" in terms
+    # "desenvolvedor" é genérico e não entra como termo de gate
+    assert "desenvolvedor" not in terms
+    fiscal = sector_gate_terms("fiscal")
+    assert "fiscal" in fiscal
 
 
 def test_boost_aumenta_score_de_vaga_da_area():

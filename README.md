@@ -160,6 +160,16 @@ Abre no navegador uma interface (VagaMatch) que **qualquer pessoa** pode usar �
 6. Em cada vaga: **Aplicar**, **Análise ATS** (cobertura + palavras faltando), **Adaptar currículo**, **Carta** e **Já apliquei** (acompanhamento)
 7. **Comparar até 3 vagas** lado a lado e abrir o **Painel** com estatísticas (candidaturas, score médio, favoritos) e histórico
 
+Qualidade da busca (uniforme em todas as fontes):
+
+- **Palavra-chave tem prioridade**: se você digita `php`, a busca traz vagas de PHP
+  (o setor não dilui mais o termo); o setor entra como busca só quando não há
+  palavras-chave e sempre influencia o ranqueamento.
+- **Filtro real de senioridade**: o nível (júnior/pleno/sênior) é aplicado a Gupy,
+  Remotive e RemoteOK também — pedir júnior não traz mais vagas sênior.
+- **Filtro de relevância**: vagas que não mencionam o termo/área buscada são
+  removidas, em vez de devolver resultados aleatórios.
+
 Outros recursos da interface: **seletor de setor/área** (com palavras-chave opcionais)
 que sugere a área a partir do currículo e ainda **prioriza no ranqueamento** as vagas
 com skills daquela área; **status por fonte** (quantas vagas cada plataforma retornou)

@@ -10,9 +10,72 @@ from __future__ import annotations
 from cv_apply.profile import JobMatch
 from cv_apply.skills_dict import text_has_skill
 
+# id do setor → termo de busca primário (conciso). Usado como query nas fontes
+# quando o usuário NÃO digita palavras-chave próprias. Frases curtas funcionam
+# melhor em APIs que casam o texto de forma quase literal (Gupy/InfoJobs).
+SECTOR_PRIMARY_TERM: dict[str, str] = {
+    "tec_dev": "desenvolvedor",
+    "tec_suporte": "suporte técnico",
+    "tec_dados": "analista de dados",
+    "tec_devops": "devops",
+    "tec_qa": "analista de testes",
+    "tec_seguranca": "segurança da informação",
+    "produto": "product manager",
+    "design": "designer",
+    "marketing": "marketing",
+    "vendas": "vendas",
+    "atendimento": "atendimento ao cliente",
+    "rh": "recursos humanos",
+    "financeiro": "analista financeiro",
+    "fiscal": "fiscal",
+    "contabil": "contabilidade",
+    "administrativo": "administrativo",
+    "juridico": "jurídico",
+    "logistica": "logística",
+    "engenharia": "engenharia",
+    "saude": "saúde",
+    "educacao": "professor",
+    "outro": "",
+}
+
+
+def sector_query(sector_id: str) -> str:
+    """Termo de busca representativo do setor (ou '' se não houver)."""
+    return SECTOR_PRIMARY_TERM.get((sector_id or "").strip().lower(), "")
+
+
+# Tokens genéricos que não ajudam a discriminar relevância de área.
+_GENERIC_SECTOR_TOKENS = {
+    "de", "da", "do", "ao", "e", "técnico", "tecnico", "analista", "assistente",
+    "desenvolvedor", "desenvolvedora", "programador", "coordenador", "gerente",
+    "manager", "consultor", "especialista", "auxiliar", "profissional",
+}
+
+# Skills muito comuns que aparecem em descrições de vagas não relacionadas
+# (ex.: "api", "git" em textos genéricos). Servem para boost, mas são fracas
+# demais como filtro de relevância de área.
+_WEAK_GATE_TOKENS = {"api", "git", "excel", "office"}
+
+
+def sector_gate_terms(sector_id: str) -> list[str]:
+    """Termos para filtrar relevância quando o usuário escolhe um setor mas não
+    digita palavras-chave próprias: as skills da área + tokens do termo primário.
+    """
+    sid = (sector_id or "").strip().lower()
+    terms = [s for s in sector_skills(sid) if s not in _WEAK_GATE_TOKENS]
+    for tok in sector_query(sid).split():
+        t = tok.strip().lower()
+        if len(t) > 2 and t not in _GENERIC_SECTOR_TOKENS:
+            terms.append(t)
+    return terms
+
+
 # id do setor → skills/termos característicos da área
 SECTOR_SKILLS: dict[str, list[str]] = {
-    "tec_dev": ["python", "java", "javascript", "react", "node.js", "api", "git"],
+    "tec_dev": [
+        "python", "java", "javascript", "typescript", "php", "c#", ".net",
+        "react", "node.js", "laravel", "api", "git",
+    ],
     "tec_suporte": ["suporte", "help desk", "windows", "linux", "redes", "hardware"],
     "tec_dados": ["sql", "python", "etl", "power bi", "data", "pandas", "spark"],
     "tec_devops": ["docker", "kubernetes", "terraform", "aws", "ci/cd", "linux"],

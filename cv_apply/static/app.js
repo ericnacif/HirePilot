@@ -194,43 +194,7 @@ function showFormat() {
 }
 
 /* ---------- setores ---------- */
-const SECTORS = {
-  tec_dev: "desenvolvedor programador software full stack",
-  tec_suporte: "suporte técnico help desk analista de suporte TI",
-  tec_dados: "analista de dados cientista de dados engenheiro de dados",
-  tec_devops: "devops sre infraestrutura cloud",
-  tec_qa: "qa analista de testes quality assurance",
-  tec_seguranca: "segurança da informação cybersecurity",
-  produto: "product manager product owner produto",
-  design: "designer ux ui product design",
-  marketing: "marketing growth mídias sociais",
-  vendas: "vendas comercial executivo de contas sdr",
-  atendimento: "atendimento ao cliente customer success",
-  rh: "recursos humanos rh recrutamento",
-  financeiro: "financeiro analista financeiro controladoria",
-  fiscal: "fiscal tributário",
-  contabil: "contábil contabilidade",
-  administrativo: "administrativo assistente administrativo",
-  juridico: "jurídico advogado",
-  logistica: "logística supply chain",
-  engenharia: "engenharia",
-  saude: "saúde enfermagem",
-  educacao: "educação professor",
-  outro: "",
-};
-
-function onSectorChange() {
-  // limpa palavras-chave herdadas ao trocar de setor para evitar query confusa
-  saveFilters();
-}
-
-function buildQuery() {
-  const sectorQ = SECTORS[$("sector").value] || "";
-  const kw = ($("keywords").value || "").trim();
-  let q = [sectorQ, kw].filter(Boolean).join(" ").trim();
-  if (!q && PROFILE && PROFILE.job_hint) q = PROFILE.job_hint;
-  return q;
-}
+function onSectorChange() { saveFilters(); }
 
 /* ---------- filters persistence ---------- */
 function collectFilters() {
@@ -316,9 +280,8 @@ async function search() {
   $("results").innerHTML = skeletons(4);
   const payload = collectFilters();
   saveFilters();
-  payload.keywords = buildQuery();
   if (!payload.sources.length) { toast("Selecione ao menos uma fonte.", "error"); btn.disabled = false; btn.textContent = "Buscar vagas"; return; }
-  if (!payload.keywords) { toast("Escolha um setor ou informe palavras-chave.", "error"); btn.disabled = false; btn.textContent = "Buscar vagas"; return; }
+  if (!payload.sector && !(payload.keywords || "").trim()) { toast("Escolha um setor ou informe palavras-chave.", "error"); btn.disabled = false; btn.textContent = "Buscar vagas"; return; }
   try {
     const d = await postJSON("/api/search", payload);
     if (d.error) { $("results").innerHTML = '<div class="empty"><div class="big">⚠️</div>' + esc(d.error) + "</div>"; }
@@ -385,14 +348,22 @@ function renderResults() {
 }
 
 function smartEmptyState() {
+  const totalRaw = LAST_SOURCES.reduce((n, s) => n + (s.count || 0), 0);
   const responded = LAST_SOURCES.filter(s => s.count > 0).map(s => SOURCE_LABELS[s.source] || s.source);
   const empty = LAST_SOURCES.filter(s => s.count === 0).map(s => SOURCE_LABELS[s.source] || s.source);
-  let msg = "Nenhuma vaga encontrada.";
-  if (empty.length && LAST_SOURCES.length) {
-    msg = "Nenhuma vaga em: " + empty.join(", ") + ". Tente outro setor, palavras-chave mais amplas ou ajuste os filtros.";
+
+  let msg, hint = "";
+  if (totalRaw > 0) {
+    // Fontes trouxeram vagas, mas os filtros (nível/termo) removeram todas.
+    msg = "As fontes retornaram " + totalRaw + " vaga(s), mas nenhuma passou nos filtros aplicados.";
+    hint = '<div class="muted" style="margin-top:8px">Dica: remova o filtro de <b>Nível</b> (pode não haver vagas desse nível agora), troque o setor ou use palavras-chave mais amplas.</div>';
+  } else {
+    msg = "Nenhuma vaga encontrada nas fontes selecionadas.";
+    if (empty.length) hint = '<div class="muted" style="margin-top:8px">Sem retorno de: ' + esc(empty.join(", ")) + ". Tente outras fontes ou amplie a busca.</div>";
   }
-  let hint = "";
-  if (responded.length) hint = '<div class="muted" style="margin-top:8px">Outras fontes retornaram resultados: ' + esc(responded.join(", ")) + ".</div>";
+  if (responded.length && totalRaw > 0) {
+    hint += '<div class="muted" style="margin-top:4px">Fontes com retorno: ' + esc(responded.join(", ")) + ".</div>";
+  }
   return '<div class="empty"><div class="big">🤷</div>' + esc(msg) + hint + "</div>";
 }
 

@@ -32,8 +32,13 @@ from cv_apply.config import get_settings
 from cv_apply.cover_letter import generate_cover_letter
 from cv_apply.matching import rank_jobs
 from cv_apply.profile import CandidateProfile, JobPosting
+from cv_apply.relevance import (
+    extract_query_terms,
+    filter_by_experience,
+    filter_by_relevance,
+)
 from cv_apply.resume_parser import parse_resume
-from cv_apply.sectors import apply_sector_boost
+from cv_apply.sectors import apply_sector_boost, sector_gate_terms, sector_query
 from cv_apply.sources import AVAILABLE_SOURCES, dedupe_jobs, run_sources
 from cv_apply.tailor import tailor_resume_markdown
 
@@ -307,7 +312,13 @@ def api_search(sess: SessionData):
         return jsonify({"error": "Muitas buscas seguidas. Aguarde alguns segundos."}), 429
     data = request.get_json(silent=True) or {}
     settings = get_settings()
-    settings.search_keywords = data.get("keywords") or "desenvolvedor"
+
+    # Query: o que o usuário digita é prioritário (ex.: "php"); o setor só entra
+    # como termo de busca quando não há palavras-chave (e sempre pesa no ranking).
+    user_keywords = (data.get("keywords") or "").strip()
+    sector = data.get("sector", "")
+    settings.search_keywords = user_keywords or sector_query(sector) or "desenvolvedor"
+
     settings.search_location = data.get("location") or "Brasil"
     settings.search_workplace = [w.lower() for w in data.get("workplace", [])]
     settings.search_job_type = [j.lower() for j in data.get("job_type", [])]
@@ -337,10 +348,24 @@ def api_search(sess: SessionData):
         return jsonify({"jobs": [], "sources": sources_status})
 
     all_jobs = dedupe_jobs(all_jobs)
+
+    # Filtros de relevância (uniformes a todas as fontes):
+    # 1) senioridade — remove vagas cujo nível contradiz o nível pedido;
+    # 2) termos — garante que a busca traga vagas da área/termo certo. Se o
+    #    usuário digitou algo específico (ex.: "php"), usamos isso; senão, usamos
+    #    os termos característicos do setor para cortar o ruído.
+    all_jobs = filter_by_experience(all_jobs, settings.search_experience)
+    user_terms = extract_query_terms(user_keywords)
+    gate_terms = user_terms or sector_gate_terms(sector)
+    # Sem fallback: preferimos "nada encontrado" a devolver vagas irrelevantes.
+    all_jobs = filter_by_relevance(all_jobs, gate_terms, fallback=False)
+    if not all_jobs:
+        return jsonify({"jobs": [], "sources": sources_status})
+
     matches = rank_jobs(
         sess.profile, all_jobs, min_score=0, use_semantic=settings.use_semantic_matching
     )
-    matches = apply_sector_boost(matches, data.get("sector", ""))
+    matches = apply_sector_boost(matches, sector)
 
     sess.jobs = {}
     sess.source_by_job = source_by_id
