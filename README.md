@@ -123,16 +123,18 @@ Dados em `%LOCALAPPDATA%\HirePilot\data\`. Requer **WebView2** (padrão no Windo
 1. Publique um release (gera `.exe`, instalador e ZIP automaticamente):
 
 ```bash
-git tag v1.1.0
-git push origin v1.1.0
+git tag v1.1.4
+git push origin v1.1.4
 ```
+
+Repositório: https://github.com/ericnacif/HirePilot
 
 2. Na página **Releases**, envie ao amigo:
    - **`HirePilot-Setup.exe`** — instalador (melhor opção)
    - ou **`HirePilot-portable.zip`** — versão portátil
 
 Arquivos no release: Leve (`HirePilot.exe`), Completa (`HirePilot-Full.exe`), instalador e ZIP.  
-Instruções para leigos: [INSTALAR.md](INSTALAR.md).
+Instruções para leigos: [INSTALAR.md](INSTALAR.md). Histórico: [CHANGELOG.md](CHANGELOG.md).
 
 **Testar o modo app sem gerar o .exe:**
 

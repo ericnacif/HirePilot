@@ -1,7 +1,7 @@
 ; Inno Setup — instalador Windows do HirePilot (Edição Leve)
 
 #define MyAppName "HirePilot"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.1.4"
 #define MyAppPublisher "HirePilot"
 #define MyAppURL "https://github.com/ericnacif/HirePilot"
 #define MyAppExeName "HirePilot.exe"
