@@ -63,8 +63,42 @@
 
     <div class="layout">
       <div class="panel">
-        <label>Setor / cargo (palavras-chave)</label>
-        <input type="text" id="keywords" placeholder="ex: desenvolvedor full stack">
+        <label for="sector">Setor / área</label>
+        <select id="sector" onchange="onSectorChange()">
+          <option value="">Selecione…</option>
+          <optgroup label="Tecnologia">
+            <option value="tec_dev">Tecnologia / Desenvolvimento</option>
+            <option value="tec_suporte">Tecnologia / Suporte</option>
+            <option value="tec_dados">Tecnologia / Dados</option>
+            <option value="tec_devops">Tecnologia / DevOps / Infra</option>
+            <option value="tec_qa">Tecnologia / QA / Testes</option>
+            <option value="tec_seguranca">Tecnologia / Segurança</option>
+          </optgroup>
+          <optgroup label="Produto & Design">
+            <option value="produto">Produto</option>
+            <option value="design">Design / UX</option>
+          </optgroup>
+          <optgroup label="Negócios">
+            <option value="marketing">Marketing</option>
+            <option value="vendas">Vendas / Comercial</option>
+            <option value="atendimento">Atendimento ao cliente</option>
+            <option value="rh">Recursos Humanos (RH)</option>
+            <option value="financeiro">Financeiro</option>
+            <option value="fiscal">Fiscal</option>
+            <option value="contabil">Contábil</option>
+            <option value="administrativo">Administrativo</option>
+            <option value="juridico">Jurídico</option>
+            <option value="logistica">Logística / Supply Chain</option>
+          </optgroup>
+          <optgroup label="Outros">
+            <option value="engenharia">Engenharia</option>
+            <option value="saude">Saúde</option>
+            <option value="educacao">Educação</option>
+            <option value="outro">Outro (usar palavras-chave)</option>
+          </optgroup>
+        </select>
+        <label for="keywords">Palavras-chave (opcional)</label>
+        <input type="text" id="keywords" placeholder="ex: react, node, fintech">
         <label>Localização</label>
         <input type="text" id="location" placeholder="ex: Brasil, Remote, Portugal" value="Brasil">
         <label>Modelo de trabalho</label>

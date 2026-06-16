@@ -127,7 +127,6 @@ function showProfile() {
   $("seniority").value = PROFILE.seniority || "";
   restoreFilters();
   renderSavedSearches();
-  if (!$("keywords").value && PROFILE.job_hint) $("keywords").value = PROFILE.job_hint;
 }
 
 async function saveSeniority() {
@@ -160,10 +159,50 @@ function showFormat() {
   openModal("Compatibilidade ATS do currículo", html);
 }
 
+/* ---------- setores ---------- */
+const SECTORS = {
+  tec_dev: "desenvolvedor programador software full stack",
+  tec_suporte: "suporte técnico help desk analista de suporte TI",
+  tec_dados: "analista de dados cientista de dados engenheiro de dados",
+  tec_devops: "devops sre infraestrutura cloud",
+  tec_qa: "qa analista de testes quality assurance",
+  tec_seguranca: "segurança da informação cybersecurity",
+  produto: "product manager product owner produto",
+  design: "designer ux ui product design",
+  marketing: "marketing growth mídias sociais",
+  vendas: "vendas comercial executivo de contas sdr",
+  atendimento: "atendimento ao cliente customer success",
+  rh: "recursos humanos rh recrutamento",
+  financeiro: "financeiro analista financeiro controladoria",
+  fiscal: "fiscal tributário",
+  contabil: "contábil contabilidade",
+  administrativo: "administrativo assistente administrativo",
+  juridico: "jurídico advogado",
+  logistica: "logística supply chain",
+  engenharia: "engenharia",
+  saude: "saúde enfermagem",
+  educacao: "educação professor",
+  outro: "",
+};
+
+function onSectorChange() {
+  // limpa palavras-chave herdadas ao trocar de setor para evitar query confusa
+  saveFilters();
+}
+
+function buildQuery() {
+  const sectorQ = SECTORS[$("sector").value] || "";
+  const kw = ($("keywords").value || "").trim();
+  let q = [sectorQ, kw].filter(Boolean).join(" ").trim();
+  if (!q && PROFILE && PROFILE.job_hint) q = PROFILE.job_hint;
+  return q;
+}
+
 /* ---------- filters persistence ---------- */
 function collectFilters() {
   return {
-    keywords: $("keywords").value, location: $("location").value,
+    sector: $("sector").value, keywords: $("keywords").value,
+    location: $("location").value,
     workplace: getChecked("workplace"), job_type: getChecked("job_type"),
     experience: getChecked("experience"), date_posted: $("date_posted").value,
     sources: getChecked("sources"), limit: parseInt($("limit").value) || 20,
@@ -178,6 +217,7 @@ function setChecks(id, values) {
 
 function applyFilterObject(f) {
   if (!f) return;
+  if (f.sector != null) $("sector").value = f.sector;
   if (f.keywords != null) $("keywords").value = f.keywords;
   if (f.location != null) $("location").value = f.location;
   if (f.date_posted) $("date_posted").value = f.date_posted;
@@ -242,7 +282,9 @@ async function search() {
   $("results").innerHTML = skeletons(4);
   const payload = collectFilters();
   saveFilters();
+  payload.keywords = buildQuery();
   if (!payload.sources.length) { toast("Selecione ao menos uma fonte.", "error"); btn.disabled = false; btn.textContent = "Buscar vagas"; return; }
+  if (!payload.keywords) { toast("Escolha um setor ou informe palavras-chave.", "error"); btn.disabled = false; btn.textContent = "Buscar vagas"; return; }
   try {
     const d = await postJSON("/api/search", payload);
     if (d.error) { $("results").innerHTML = '<div class="empty"><div class="big">⚠️</div>' + esc(d.error) + "</div>"; }
