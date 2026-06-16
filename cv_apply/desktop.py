@@ -72,6 +72,38 @@ def _ensure_desktop_defaults() -> None:
         os.environ.setdefault("SEARCH_SOURCES", "gupy,indeed,greenhouse,remotive,remoteok")
 
 
+def _install_playwright_chromium(browser_dir: Path) -> None:
+    """Instala Chromium do Playwright sem relançar o .exe (evita várias janelas)."""
+    env = {**os.environ, "PLAYWRIGHT_BROWSERS_PATH": str(browser_dir)}
+    try:
+        if getattr(sys, "frozen", False):
+            import subprocess
+
+            from playwright._impl._driver import compute_driver_executable
+
+            node, cli = compute_driver_executable()
+            subprocess.run(
+                [node, cli, "install", "chromium"],
+                env=env,
+                check=False,
+                capture_output=True,
+                timeout=600,
+            )
+            return
+
+        import subprocess
+
+        subprocess.run(
+            [sys.executable, "-m", "playwright", "install", "chromium"],
+            env=env,
+            check=False,
+            capture_output=True,
+            timeout=600,
+        )
+    except Exception as exc:
+        logger.warning("Falha ao instalar Playwright: %s", exc)
+
+
 def _bootstrap_playwright_async(data_dir) -> None:
     """Baixa Chromium uma vez (variante Completa) em segundo plano."""
     if not _is_full_variant():
@@ -90,18 +122,8 @@ def _bootstrap_playwright_async(data_dir) -> None:
                     return
         except Exception:
             pass
-        try:
-            import subprocess
-
-            subprocess.run(
-                [sys.executable, "-m", "playwright", "install", "chromium"],
-                check=False,
-                capture_output=True,
-                timeout=600,
-            )
-            logger.info("Playwright Chromium instalado em %s", browser_dir)
-        except Exception as exc:
-            logger.warning("Falha ao instalar Playwright: %s", exc)
+        _install_playwright_chromium(browser_dir)
+        logger.info("Playwright Chromium: instalação em %s concluída ou em andamento", browser_dir)
 
     threading.Thread(target=_run, name="playwright-bootstrap", daemon=True).start()
 

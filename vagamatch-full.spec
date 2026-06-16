@@ -1,9 +1,21 @@
 # -*- mode: python ; coding: utf-8 -*-
 # HirePilot Completo — inclui Playwright (LinkedIn/InfoJobs na 1ª execução).
 
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy_metadata
 
 block_cipher = None
+
+_METADATA_PKGS = ("werkzeug", "flask", "click", "itsdangerous", "jinja2", "markupsafe", "blinker")
+
+
+def _pkg_metadata():
+    datas = []
+    for pkg in _METADATA_PKGS:
+        try:
+            datas += copy_metadata(pkg)
+        except Exception:
+            pass
+    return datas
 
 hiddenimports = collect_submodules("cv_apply") + collect_submodules("webview") + collect_submodules("playwright") + [
     "flask",
@@ -38,6 +50,8 @@ datas = [
     ("cv_apply/static", "cv_apply/static"),
 ]
 datas += collect_data_files("webview")
+datas += collect_data_files("playwright")
+datas += _pkg_metadata()
 
 a = Analysis(
     ["run_app.py"],
@@ -47,7 +61,7 @@ a = Analysis(
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=["cv_apply/runtime_hook_full.py"],
+    runtime_hooks=["cv_apply/runtime_hook.py", "cv_apply/runtime_hook_full.py"],
     excludes=excludes,
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
