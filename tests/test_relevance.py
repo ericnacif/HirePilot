@@ -7,6 +7,8 @@ from cv_apply.relevance import (
     filter_by_experience,
     filter_by_location,
     filter_by_relevance,
+    resolve_wanted_experience,
+    seniority_mismatch_penalty,
 )
 
 
@@ -98,3 +100,23 @@ def test_filter_by_location_brasil_mantem_remoto_e_br():
 def test_filter_by_location_fallback_quando_nada_bate():
     jobs = [_job("Dev", "", "Tokyo, Japan")]
     assert filter_by_location(jobs, "Brasil") == jobs
+
+
+def test_resolve_wanted_experience_prefere_chips():
+    assert resolve_wanted_experience(["junior"], "sênior") == ["junior"]
+
+
+def test_resolve_wanted_experience_fallback_perfil():
+    assert resolve_wanted_experience([], "júnior") == ["junior"]
+    assert resolve_wanted_experience(None, "pleno") == ["pleno"]
+
+
+def test_resolve_wanted_experience_vazio():
+    assert resolve_wanted_experience([], None) == []
+
+
+def test_seniority_mismatch_penalty():
+    job = _job("Desenvolvedor Sênior")
+    assert seniority_mismatch_penalty(["junior"], job) == 25.0
+    assert seniority_mismatch_penalty(["junior"], _job("Desenvolvedor Júnior")) == 0.0
+    assert seniority_mismatch_penalty([], job) == 0.0

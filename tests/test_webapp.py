@@ -28,6 +28,25 @@ def test_api_meta():
     data = resp.get_json()
     assert data["version"]
     assert data["variant"] in ("lite", "full")
+    assert data["local_only"] is True
+
+
+def test_api_sources_health(monkeypatch):
+    from cv_apply import source_health as sh
+
+    sh._HEALTH_CACHE["at"] = 0
+    sh._HEALTH_CACHE["sources"] = []
+    monkeypatch.setattr(
+        sh,
+        "check_all_sources_health",
+        lambda force=False: [{"source": "gupy", "status": "ok", "message": "ok", "label": "Gupy"}],
+    )
+    client = app.test_client()
+    resp = client.get("/api/sources/health")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["sources"][0]["source"] == "gupy"
+    assert "summary" in data
 
 
 def test_index_serve_html():
@@ -37,10 +56,34 @@ def test_index_serve_html():
     assert b"app.js" in resp.data
 
 
-def test_search_sem_perfil_retorna_erro():
+def test_search_sem_perfil_permitido(monkeypatch):
+    from cv_apply.search_pipeline import SearchResult
+
+    empty = SearchResult(
+        jobs=[],
+        sources_status=[],
+        meta={"guest": True},
+        job_models={},
+        source_by_id={},
+        all_seen_ids=[],
+    )
+    monkeypatch.setattr("cv_apply.webapp.execute_search", lambda *a, **k: empty)
     client = app.test_client()
-    resp = client.post("/api/search", json={"keywords": "dev"})
-    assert resp.get_json()["error"]
+    resp = client.post(
+        "/api/search",
+        json={"keywords": "dev", "sources": ["gupy"], "sector": "tec_dev"},
+    )
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert "error" not in data
+    assert data["meta"]["guest"] is True
+
+
+def test_api_profile_get_sem_curriculo():
+    client = app.test_client()
+    resp = client.get("/api/profile")
+    assert resp.status_code == 200
+    assert resp.get_json()["profile"] is None
 
 
 def test_export_csv_vazio_tem_cabecalho():

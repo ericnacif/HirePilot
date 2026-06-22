@@ -1,7 +1,13 @@
 """Testes do pipeline de busca."""
 
-from cv_apply.profile import JobMatch, JobPosting
-from cv_apply.search_pipeline import SearchContext, apply_display_limits, posted_sort_key
+from cv_apply.config import Settings
+from cv_apply.profile import CandidateProfile, JobMatch, JobPosting
+from cv_apply.search_pipeline import (
+    SearchContext,
+    apply_display_limits,
+    posted_sort_key,
+    process_raw_jobs,
+)
 
 
 def _job(job_id: str) -> JobPosting:
@@ -48,3 +54,41 @@ def test_broad_mode_honors_explicit_global_cap():
     out, meta = apply_display_limits(matches, source_by_id, ctx)
     assert len(out) == 2
     assert meta["truncation"] == "global_cap"
+
+
+def test_process_raw_jobs_filtra_senioridade_via_perfil():
+    jobs = [
+        JobPosting(id="1", title="Dev Júnior", company="X", url="u", description="PHP"),
+        JobPosting(id="2", title="Dev Sênior", company="X", url="u", description="PHP"),
+    ]
+    settings = Settings(search_experience=[], search_location="")
+    ctx = SearchContext(user_keywords="php", broad=True)
+    profile = CandidateProfile(seniority="júnior")
+    out, _also = process_raw_jobs(jobs, ctx, settings, profile)
+    titles = [j.title for j in out]
+    assert "Dev Júnior" in titles
+    assert "Dev Sênior" not in titles
+
+
+def test_process_raw_jobs_broad_sector_keeps_non_matching_titles():
+    """Modo amplo + área sem keywords: não descarta vagas só porque o título não cita a stack."""
+    jobs = [
+        JobPosting(id="1", title="Software Engineer", company="X", url="u1", description=""),
+        JobPosting(id="2", title="Product Designer", company="X", url="u2", description=""),
+    ]
+    settings = Settings(search_experience=[], search_location="")
+    ctx = SearchContext(sector="tec_dev", user_keywords="", broad=True)
+    out, _also = process_raw_jobs(jobs, ctx, settings, None)
+    assert len(out) == 2
+
+
+def test_process_raw_jobs_relevancia_php_modo_amplo():
+    jobs = [
+        JobPosting(id="1", title="Dev PHP", company="X", url="u1", description="PHP"),
+        JobPosting(id="2", title="Dev Python", company="X", url="u2", description="Python"),
+    ]
+    settings = Settings(search_experience=[], search_location="")
+    ctx = SearchContext(user_keywords="php", broad=True)
+    out, _also = process_raw_jobs(jobs, ctx, settings, None)
+    assert len(out) == 1
+    assert out[0].title == "Dev PHP"

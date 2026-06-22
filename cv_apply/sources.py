@@ -11,8 +11,10 @@ import hashlib
 import logging
 import re
 import unicodedata
+from collections import defaultdict
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 import httpx
@@ -50,6 +52,16 @@ def source_zero_hint(name: str, filters: SearchFilters) -> str | None:
         return "requer login no navegador na primeira vez"
     if name == "greenhouse":
         return "boards US fixos — poucas vagas BR"
+    if name == "solides":
+        return "portal BR — tente ampliar termos ou marcar busca ampla"
+    if name == "trampos":
+        return "portal BR (tech/criativo) — tente termos mais genéricos"
+    if name == "jooble":
+        return "defina JOOBLE_API_KEY no .env (grátis em jooble.org/api/about)"
+    if name == "catho":
+        return "requer navegador visível — 1ª busca valida sessão em browser_data/catho"
+    if name == "vagascom":
+        return "requer login no Vagas.com na 1ª busca (browser_data/vagascom)"
     return None
 
 
@@ -118,30 +130,62 @@ def _dedupe_key(job: JobPosting) -> str:
 
 
 def dedupe_jobs(jobs: list[JobPosting]) -> list[JobPosting]:
-    """Remove vagas duplicadas entre fontes, mantendo a mais completa.
+    return dedupe_jobs_tracked(jobs, {}).jobs
 
-    Primeiro unifica por URL; depois por título+empresa normalizados.
-    """
-    by_url: dict[str, JobPosting] = {}
+
+@dataclass
+class DedupeResult:
+    jobs: list[JobPosting]
+    also_sources: dict[str, list[str]]
+
+
+def dedupe_jobs_tracked(
+    jobs: list[JobPosting],
+    source_by_id: dict[str, str],
+) -> DedupeResult:
+    """Remove duplicatas e registra outras fontes onde a mesma vaga apareceu."""
+    also: dict[str, list[str]] = defaultdict(list)
+
+    def _src(job: JobPosting) -> str:
+        return source_by_id.get(job.id, "")
+
+    by_url: dict[str, list[JobPosting]] = defaultdict(list)
     no_url: list[JobPosting] = []
     for job in jobs:
         key = _normalize_url(job.url)
         if not key:
             no_url.append(job)
-            continue
-        current = by_url.get(key)
-        if current is None or _job_quality(job) > _job_quality(current):
-            by_url[key] = job
+        else:
+            by_url[key].append(job)
 
-    merged = list(by_url.values()) + no_url
+    merged: list[JobPosting] = []
+    for _key, group in by_url.items():
+        best = max(group, key=_job_quality)
+        merged.append(best)
+        sources = sorted({s for s in (_src(j) for j in group) if s})
+        if len(sources) > 1:
+            primary = _src(best)
+            also[best.id] = [s for s in sources if s != primary]
+
+    merged.extend(no_url)
 
     best: dict[str, JobPosting] = {}
+    key_to_jobs: dict[str, list[JobPosting]] = defaultdict(list)
     for job in merged:
-        key = _dedupe_key(job)
-        current = best.get(key)
-        if current is None or _job_quality(job) > _job_quality(current):
-            best[key] = job
-    return list(best.values())
+        key_to_jobs[_dedupe_key(job)].append(job)
+
+    final: list[JobPosting] = []
+    for key, group in key_to_jobs.items():
+        pick = max(group, key=_job_quality)
+        final.append(pick)
+        sources = sorted({s for s in (_src(j) for j in group) if s})
+        if len(sources) > 1:
+            primary = _src(pick)
+            extra = [s for s in sources if s != primary]
+            prev = also.get(pick.id, [])
+            also[pick.id] = sorted(set(prev + extra))
+
+    return DedupeResult(jobs=final, also_sources=dict(also))
 
 
 def _job_quality(job: JobPosting) -> tuple:
@@ -460,120 +504,12 @@ def _slugify_keywords(keywords: str) -> str:
     return text or "desenvolvedor"
 
 
-def _infojobs_description(page, url: str) -> str:
-    """Busca descrição na página da vaga (best-effort)."""
-    try:
-        page.goto(url, wait_until="domcontentloaded", timeout=20000)
-        page.wait_for_timeout(1200)
-        for sel in (
-            ".js_vacancyDescription",
-            "[data-testid='vacancy-description']",
-            ".ij-Os-block",
-            "div.vacancy-description",
-        ):
-            loc = page.locator(sel).first
-            if loc.count():
-                text = loc.inner_text(timeout=2500).strip()
-                if text:
-                    return _strip_html(text)[:5000]
-    except Exception as exc:
-        logger.debug("InfoJobs descrição %s: %s", url, exc)
-    return ""
-
-
 def search_infojobs(
     settings: Settings, filters: SearchFilters, max_jobs: int
 ) -> list[JobPosting]:
-    from playwright.sync_api import sync_playwright
+    from cv_apply.sources_infojobs import search_infojobs as _search
 
-    base = "https://www.infojobs.com.br"
-
-    def _scrape(page, keywords: str, cap: int) -> list[JobPosting]:
-        slug = _slugify_keywords(keywords)
-        page.goto(
-            f"{base}/vagas-de-emprego-{slug}.aspx",
-            wait_until="domcontentloaded",
-            timeout=45000,
-        )
-        page.wait_for_timeout(4000)
-
-        found: list[JobPosting] = []
-        cards = page.locator("div.js_rowCard")
-        count = min(cards.count(), cap)
-        for i in range(count):
-            card = cards.nth(i)
-            try:
-                href = card.get_attribute("data-href") or ""
-                native_id = card.get_attribute("data-id") or href
-                title_loc = card.locator("h2.js_vacancyTitle").first
-                title = title_loc.inner_text(timeout=2000).strip() if title_loc.count() else ""
-                if not title:
-                    continue
-
-                company = ""
-                company_loc = card.locator("a.text-body").first
-                if company_loc.count():
-                    company = company_loc.inner_text(timeout=1500).strip()
-
-                location = ""
-                loc_el = card.locator("div.text-medium, span.text-medium").first
-                if loc_el.count():
-                    location = loc_el.inner_text(timeout=1500).strip().split("\n")[0]
-
-                full_url = href if href.startswith("http") else f"{base}{href}"
-                found.append(
-                    JobPosting(
-                        id=_make_id("infojobs", str(native_id)),
-                        title=title,
-                        company=company or "Empresa não informada",
-                        location=location,
-                        url=full_url,
-                        description="",
-                        easy_apply=False,
-                    )
-                )
-                if len(found) >= cap:
-                    break
-            except Exception as exc:
-                logger.debug("InfoJobs card %d erro: %s", i, exc)
-
-        for job in found[: min(len(found), 12)]:
-            if not job.description:
-                job.description = _infojobs_description(page, job.url)
-
-        return found
-
-    jobs: list[JobPosting] = []
-    seen: set[str] = set()
-    queries = _active_queries(filters)
-    try:
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=settings.headless)
-            page = browser.new_page(locale="pt-BR")
-            for i, query in enumerate(queries):
-                if len(jobs) >= max_jobs:
-                    break
-                cap = _fair_cap(
-                    max_jobs - len(jobs), len(queries) - i,
-                    floor=5 if filters.broad_mode else 8,
-                    broad=filters.broad_mode,
-                )
-                batch: list[JobPosting] = []
-                for candidate in _keyword_candidates(query):
-                    batch = _scrape(page, candidate, cap)
-                    if batch:
-                        if candidate != query:
-                            logger.info(
-                                "InfoJobs: '%s' sem resultados; usando '%s'",
-                                query, candidate,
-                            )
-                        break
-                _append_unique(jobs, batch, seen, max_jobs)
-            browser.close()
-    except Exception as exc:
-        logger.warning("InfoJobs falhou: %s", exc)
-
-    return jobs
+    return _search(settings, filters, max_jobs)
 
 
 # --------------------------------------------------------------------------- #
@@ -611,6 +547,70 @@ def search_indeed(
     return _search(settings, filters, max_jobs)
 
 
+def search_solides(
+    settings: Settings, filters: SearchFilters, max_jobs: int
+) -> list[JobPosting]:
+    from cv_apply.sources_solides import search_solides as _search
+
+    return _search(settings, filters, max_jobs)
+
+
+def search_trampos(
+    settings: Settings, filters: SearchFilters, max_jobs: int
+) -> list[JobPosting]:
+    from cv_apply.sources_trampos import search_trampos as _search
+
+    return _search(settings, filters, max_jobs)
+
+
+def search_jooble(
+    settings: Settings, filters: SearchFilters, max_jobs: int
+) -> list[JobPosting]:
+    from cv_apply.sources_jooble import search_jooble as _search
+
+    return _search(settings, filters, max_jobs)
+
+
+def search_catho(
+    settings: Settings, filters: SearchFilters, max_jobs: int
+) -> list[JobPosting]:
+    from cv_apply.sources_catho import search_catho as _search
+
+    return _search(settings, filters, max_jobs)
+
+
+def search_vagascom(
+    settings: Settings, filters: SearchFilters, max_jobs: int
+) -> list[JobPosting]:
+    from cv_apply.sources_vagascom import search_vagascom as _search
+
+    return _search(settings, filters, max_jobs)
+
+
+def search_careerjet(
+    settings: Settings, filters: SearchFilters, max_jobs: int
+) -> list[JobPosting]:
+    from cv_apply.sources_careerjet import search_careerjet as _search
+
+    return _search(settings, filters, max_jobs)
+
+
+def search_trabalhabrasil(
+    settings: Settings, filters: SearchFilters, max_jobs: int
+) -> list[JobPosting]:
+    from cv_apply.sources_trabalhabrasil import search_trabalhabrasil as _search
+
+    return _search(settings, filters, max_jobs)
+
+
+def search_empregoscom(
+    settings: Settings, filters: SearchFilters, max_jobs: int
+) -> list[JobPosting]:
+    from cv_apply.sources_empregoscom import search_empregoscom as _search
+
+    return _search(settings, filters, max_jobs)
+
+
 SOURCE_FUNCS: dict[str, Callable[[Settings, SearchFilters, int], list[JobPosting]]] = {
     "linkedin": search_linkedin,
     "gupy": search_gupy,
@@ -619,6 +619,14 @@ SOURCE_FUNCS: dict[str, Callable[[Settings, SearchFilters, int], list[JobPosting
     "remoteok": search_remoteok,
     "greenhouse": search_greenhouse,
     "indeed": search_indeed,
+    "solides": search_solides,
+    "trampos": search_trampos,
+    "jooble": search_jooble,
+    "catho": search_catho,
+    "vagascom": search_vagascom,
+    "careerjet": search_careerjet,
+    "trabalhabrasil": search_trabalhabrasil,
+    "empregoscom": search_empregoscom,
 }
 
 AVAILABLE_SOURCES = list(SOURCE_FUNCS.keys())
@@ -626,14 +634,15 @@ AVAILABLE_SOURCES = list(SOURCE_FUNCS.keys())
 # Fontes que sobem um navegador (Playwright). Não podem rodar em paralelo entre
 # si — a API síncrona do Playwright não é thread-safe e o LinkedIn pede login
 # interativo. Rodam em sequência; as demais (APIs HTTP) rodam em paralelo.
-BROWSER_SOURCES = {"linkedin", "infojobs"}
+BROWSER_SOURCES = {"linkedin", "infojobs", "catho", "vagascom", "trabalhabrasil"}
 
 
 def run_sources(
     settings: Settings,
     max_jobs: int,
     on_log: Callable[[str], None] | None = None,
-    on_source_done: Callable[[str, list[JobPosting]], None] | None = None,
+    on_source_start: Callable[[str], None] | None = None,
+    on_source_done: Callable[[str, list[JobPosting], dict], None] | None = None,
     use_cache: bool = True,
 ) -> tuple[dict[str, list[JobPosting]], dict[str, dict]]:
     """Executa as fontes habilitadas. Retorna (vagas, meta por fonte)."""
@@ -659,45 +668,52 @@ def run_sources(
     api_sources = [n for n in requested if n not in BROWSER_SOURCES]
     browser_sources = [n for n in requested if n in BROWSER_SOURCES]
 
-    def run_one(name: str) -> tuple[str, list[JobPosting]]:
+    def run_one(name: str) -> tuple[str, list[JobPosting], dict]:
         cache_key = cache.make_key(name, settings, filters, max_jobs) if cache else ""
         if cache:
             hit = cache.get(cache_key)
             if hit is not None:
                 log(f"  {name}: {len(hit)} vaga(s) (cache)")
-                source_meta[name] = {"cached": True}
-                if on_source_done:
-                    on_source_done(name, hit)
-                return name, hit
+                meta = {"cached": True, "hint": None}
+                source_meta[name] = meta
+                return name, hit, meta
         try:
             found = SOURCE_FUNCS[name](settings, filters, max_jobs)
             if cache:
-                cache.set(cache_key, found)
+                cache.set(cache_key, found, source=name)
             hint = source_zero_hint(name, filters) if not found else None
-            source_meta[name] = {"cached": False, "hint": hint}
-            return name, found
+            meta = {"cached": False, "hint": hint}
+            source_meta[name] = meta
+            return name, found, meta
         except Exception as exc:
             log(f"  {name}: erro ({exc})")
-            source_meta[name] = {"cached": False, "hint": str(exc)[:120]}
-            return name, []
+            meta = {"cached": False, "hint": str(exc)[:120]}
+            source_meta[name] = meta
+            return name, [], meta
 
     if api_sources:
         log(f"Buscando em paralelo: {', '.join(api_sources)}...")
         with ThreadPoolExecutor(max_workers=len(api_sources)) as pool:
-            futures = {pool.submit(run_one, name): name for name in api_sources}
+            futures = {}
+            for name in api_sources:
+                if on_source_start:
+                    on_source_start(name)
+                futures[pool.submit(run_one, name)] = name
             for future in as_completed(futures):
-                name, found = future.result()
+                name, found, meta = future.result()
                 results[name] = found
                 log(f"  {name}: {len(found)} vaga(s)")
                 if on_source_done:
-                    on_source_done(name, found)
+                    on_source_done(name, found, meta)
 
     for name in browser_sources:
         log(f"Buscando em '{name}'...")
-        name, found = run_one(name)
+        if on_source_start:
+            on_source_start(name)
+        name, found, meta = run_one(name)
         results[name] = found
         log(f"  {name}: {len(found)} vaga(s)")
         if on_source_done:
-            on_source_done(name, found)
+            on_source_done(name, found, meta)
 
     return results, source_meta

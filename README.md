@@ -7,7 +7,21 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Ruff](https://img.shields.io/badge/lint-ruff-261230)](https://github.com/astral-sh/ruff)
 
-Aplicação Python que lê seu currículo, busca vagas em **várias plataformas** (LinkedIn, Gupy, Indeed, Greenhouse, InfoJobs, Remotive, RemoteOK), ranqueia por compatibilidade com matching semântico **gratuito/local**, analisa compatibilidade **ATS**, gera **carta de apresentação** (PT/EN) e prepara candidaturas — **você confirma o envio manualmente**.
+## Início rápido (2 minutos)
+
+| Quem é você? | O que fazer |
+|--------------|-------------|
+| **Quero só usar** (sem Python) | Baixe o `.exe` na página [Releases](https://github.com/ericnacif/HirePilot/releases) e siga o [INSTALAR.md](INSTALAR.md) — duplo clique, envie o CV, busque vagas. |
+| **Desenvolvedor** | `pip install -e .` → `playwright install chromium` → `python run_app.py` (janela desktop) ou `hirepilot web` (navegador). |
+| **Docker** | `docker compose up --build` → acesse `http://localhost:5000`. |
+
+> **Uso local/privado:** a interface web guarda currículos em `data/uploads/` no seu PC. Não hospede publicamente na internet sem autenticação — foi pensada para uso pessoal ou em rede privada.
+
+Detalhes técnicos, CLI, filtros e aviso legal continuam abaixo.
+
+---
+
+Aplicação Python que lê seu currículo, busca vagas em **várias plataformas** (Gupy, Indeed, Sólides, Trampos, Catho, Vagas.com, InfoJobs, LinkedIn, Jooble, CareerJet, Trabalha Brasil, Empregos.com.br, Remotive, RemoteOK, Greenhouse), ranqueia por compatibilidade com matching semântico **gratuito/local**, analisa compatibilidade **ATS**, gera **carta de apresentação** (PT/EN) e prepara candidaturas — **você confirma o envio manualmente**.
 
 Tem uma **interface web reutilizável** (qualquer pessoa sobe o próprio currículo) e uma **CLI** completa.
 
@@ -15,15 +29,25 @@ Tem uma **interface web reutilizável** (qualquer pessoa sobe o próprio curríc
 
 | Fonte | Como funciona | Login | Candidatura |
 |-------|---------------|-------|-------------|
-| `linkedin` | Navegador (Playwright) | Manual (1ª vez) | Easy Apply assistido |
 | `gupy` | API pública | Não | Link manual |
 | `indeed` | RSS Brasil | Não | Link manual |
+| `solides` | API pública (vagas.solides.com.br) | Não | Link manual |
+| `trampos` | API pública (trampos.co) | Não | Link manual |
+| `catho` | Navegador (Playwright, sessão persistente) | Opcional (mais vagas) | Link manual |
+| `vagascom` | Navegador (Playwright) | Manual (1ª vez) | Link manual |
+| `trabalhabrasil` | Navegador (Playwright) | Não | Link manual |
+| `empregoscom` | Scraping HTTP leve | Não | Link manual |
+| `jooble` | API agregadora (requer `JOOBLE_API_KEY`) | Não | Link externo |
+| `careerjet` | API agregadora (requer `CAREERJET_API_KEY`) | Não | Link externo |
+| `infojobs` | Navegador (Playwright, sessão persistente) | Opcional | Link manual |
+| `linkedin` | Navegador (Playwright) | Manual (1ª vez) | Easy Apply assistido |
 | `greenhouse` | API pública (boards US) | Não | Link manual |
-| `infojobs` | Navegador (Playwright) | Não | Link manual |
 | `remotive` | API pública (só remoto) | Não | Link manual |
 | `remoteok` | API pública (só remoto) | Não | Link manual |
 
-As APIs públicas (Gupy, Remotive, RemoteOK, Indeed, Greenhouse) são as mais estáveis e sem risco de bloqueio.
+As APIs públicas (Gupy, Sólides, Trampos, Empregos.com.br, Remotive, RemoteOK, Indeed) são as mais estáveis. Catho, Vagas.com, LinkedIn, InfoJobs e Trabalha Brasil abrem o navegador — use o **assistente de conexão** na interface na 1ª busca.
+
+**v1.5** traz alertas com notificação (desktop/Telegram/webhook), dedup visível, kanban com drag-and-drop, preset «Só APIs», repetir última busca, PIN web opcional (`WEB_ACCESS_PIN`) e cache por fonte.
 
 ## Aviso legal
 
@@ -76,7 +100,9 @@ A forma mais rápida de subir a interface web, sem instalar nada além do Docker
 docker compose up --build
 ```
 
-Acesse `http://localhost:5000`. A imagem é enxuta (sem Playwright/torch): as fontes
+Acesse `http://localhost:5000`. **Use só na sua máquina ou rede privada** — a imagem não inclui autenticação; uploads ficam no volume `hirepilot-data`.
+
+A imagem é enxuta (sem Playwright/torch): as fontes
 via API (Gupy, Remotive, RemoteOK) e o matching por palavras-chave funcionam normalmente.
 As fontes LinkedIn/InfoJobs (que abrem navegador) e o matching semântico ficam
 desativados nesse modo. Os dados (uploads) ficam no volume `hirepilot-data`.
@@ -120,12 +146,14 @@ Dados em `%LOCALAPPDATA%\HirePilot\data\`. Requer **WebView2** (padrão no Windo
 
 ### Distribuir para um amigo (sem código)
 
-1. Publique um release (gera `.exe`, instalador e ZIP automaticamente):
+1. Publique um release (build do `.exe`, instalador e ZIP **automáticos** no GitHub Actions):
 
 ```bash
-git tag v1.1.4
-git push origin v1.1.4
+git tag v1.2.1
+git push origin v1.2.1
 ```
+
+O workflow [release.yml](.github/workflows/release.yml) roda testes, gera os executáveis Windows e publica na página **Releases** (notas geradas pelo Release Drafter).
 
 Repositório: https://github.com/ericnacif/HirePilot
 
@@ -168,7 +196,8 @@ Principais variáveis:
 | `RESUME_PATH` | Caminho do currículo | `meu_cv.pdf` |
 | `SEARCH_KEYWORDS` | Palavras-chave da busca | `desenvolvedor python` |
 | `SEARCH_LOCATION` | Localização | `Brasil` |
-| `SEARCH_SOURCES` | Fontes (vírgula): `linkedin,gupy,infojobs,remotive,remoteok` | `linkedin` |
+| `SEARCH_SOURCES` | Fontes (vírgula): ver tabela acima | `gupy,solides,trampos,catho` |
+| `JOOBLE_API_KEY` | Chave Jooble (agregador BR/internacional) | vazio |
 | `SEARCH_WORKPLACE` | `remoto`, `hibrido`, `presencial` (vírgula) | vazio (qualquer) |
 | `SEARCH_JOB_TYPE` | `efetivo`, `estagio`, `meio_periodo`, `temporario`, `pj` | vazio |
 | `SEARCH_EXPERIENCE` | `estagio`, `junior`, `pleno`, `senior`, `diretor`, `executivo` | vazio |
@@ -234,12 +263,14 @@ Qualidade da busca (uniforme em todas as fontes):
 Outros recursos da interface: **seletor de setor/área** (com palavras-chave opcionais)
 que sugere a área a partir do currículo e ainda **prioriza no ranqueamento** as vagas
 com skills daquela área; **status por fonte** (quantas vagas cada plataforma retornou)
-e estado vazio inteligente; tema claro/escuro, paginação e ordenação dos resultados,
+e **health check proativo** (qual fonte está OK, instável ou indisponível antes da busca);
+estado vazio inteligente; tema claro/escuro, paginação e ordenação dos resultados,
 buscas salvas, exportação (CSV/JSON) e reconhecimento de **sinônimos de skills**
 (ex.: `js`→`javascript`, `k8s`→`kubernetes`).
 
-> Ao rodar `hirepilot web`, se a porta 5000 já estiver ocupada por um servidor
+> **Privacidade:** ao rodar `hirepilot web`, se a porta 5000 já estiver ocupada por um servidor
 > anterior, ela é liberada automaticamente (use `--keep-port` para desativar).
+> Currículos enviados vão para `data/uploads/` no disco local — **não use em servidor público** sem proteger o acesso.
 
 Não precisa configurar nada antes — o currículo é enviado pela própria interface.
 

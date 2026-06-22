@@ -69,6 +69,13 @@ def test_remote_scope():
     filt = parse_location("", scope="remote")
     assert job_matches_location("Remoto", filt) is True
     assert job_matches_location("São Paulo, SP", filt) is False
+    assert job_matches_location("Americas, Europe", filt) is True
+    assert job_matches_location("London, UK", filt) is True
+
+
+def test_remote_native_source_bypass():
+    filt = parse_location("", scope="remote")
+    assert job_matches_location("Eugene, OR", filt, source="remoteok") is True
 
 
 def test_foreign_scope():

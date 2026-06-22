@@ -2,6 +2,45 @@
 
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.5.0] - 2026-06-22
+
+### Adicionado
+- **Notificações de alertas** — desktop (Windows/macOS), Telegram, webhook e Notification API no navegador
+- **Novas fontes** — CareerJet (API), Trabalha Brasil e Empregos.com.br
+- **InfoJobs com sessão persistente** — contexto Playwright reutilizado entre buscas
+- **Dedup visível** — badge «Também em» quando a mesma vaga aparece em vários portais
+- **Score explicado** — botão «Por quê?» no card com detalhes ATS/match
+- **Kanban drag-and-drop** — arraste cards entre colunas no pipeline
+- **Vaga embutida** — painel inline de detalhes sem sair da lista
+- **Repetir última busca** — botão no header e na área de busca
+- **Preset «Só APIs»** — seleciona fontes sem navegador/login
+- **Cache por fonte** — botão ↻ nos chips de fonte para invalidar e rebuscar
+- **PIN web opcional** — `WEB_ACCESS_PIN` protege a interface em rede local
+- **Testes** — dedupe rastreado e parser Empregos.com.br com fixture
+
+### Alterado
+- Vagas.com — seletores e scroll aprimorados
+- Jooble/CareerJet marcados automaticamente quando a API key está no `.env`
+- Health check das novas fontes no painel lateral
+
+## [1.4.0] - 2026-06-22
+
+### Adicionado
+- **Assistente de conexão** — wizard para LinkedIn, Catho, Vagas.com e InfoJobs (login no navegador)
+- **Status ao vivo por fonte** — painel durante a busca mostrando progresso de cada portal
+- **Kanban de candidaturas** — aba Candidaturas com colunas Interesse → Candidatado → Entrevista → Oferta → Recusado
+- **Catho com login** — sessão persistente + paginação para mais vagas além do preview
+- **Onboarding Jooble** — hint na UI com link para cadastro da API key
+
+### Alterado
+- Filtro por fonte nos resultados (chips «Exibidas: Todas · Gupy · Catho…»)
+- README atualizado com as 12 fontes suportadas
+
+## [1.3.2] - 2026-06-22
+
+### Adicionado
+- Fontes **Catho** e **Vagas.com** via Playwright (contexto persistente)
+
 ## [1.2.0] - 2026-06-16
 
 ### Adicionado

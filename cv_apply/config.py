@@ -168,6 +168,8 @@ class Settings(BaseModel):
         default_factory=lambda: os.getenv("HEADLESS", "false").lower() == "true"
     )
     data_dir: Path = Field(default_factory=lambda: Path(os.getenv("DATA_DIR", "data")))
+    jooble_api_key: str = Field(default_factory=lambda: os.getenv("JOOBLE_API_KEY", ""))
+    careerjet_api_key: str = Field(default_factory=lambda: os.getenv("CAREERJET_API_KEY", ""))
 
     def resolve_paths(self) -> Settings:
         """Resolve caminhos relativos ao diretório do projeto.

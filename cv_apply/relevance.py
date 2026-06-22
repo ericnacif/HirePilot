@@ -65,30 +65,78 @@ def detect_seniority_levels(text: str) -> set[str]:
     return found
 
 
+def _job_seniority_levels(job: JobPosting) -> set[str]:
+    """Níveis detectados no título e, se necessário, na descrição."""
+    levels = detect_seniority_levels(job.title)
+    if not levels:
+        levels = detect_seniority_levels((job.description or "")[:1200])
+    return levels
+
+
+_PROFILE_TO_LEVEL = {
+    "estagiário": "estagio",
+    "estagiario": "estagio",
+    "júnior": "junior",
+    "junior": "junior",
+    "pleno": "pleno",
+    "sênior": "senior",
+    "senior": "senior",
+}
+
+
+def resolve_wanted_experience(
+    experience_chips: list[str] | None,
+    profile_seniority: str | None = None,
+) -> list[str]:
+    """Unifica chips de nível da busca com a senioridade do perfil (fallback)."""
+    wanted = [e.strip().lower() for e in (experience_chips or []) if e.strip()]
+    if wanted:
+        return wanted
+    if profile_seniority:
+        mapped = _PROFILE_TO_LEVEL.get(profile_seniority.strip().lower())
+        if mapped:
+            return [mapped]
+    return []
+
+
 def filter_by_experience(
     jobs: list[JobPosting], wanted: list[str]
 ) -> list[JobPosting]:
     """Remove vagas cujo nível explícito contradiz os níveis desejados.
 
-    - Detecta o nível pelo **título** (sinal mais confiável); se o título não
-      indicar nada, olha o início da descrição.
+    - Detecta o nível pelo **título**; se vazio, olha a descrição (até ~1200 chars).
     - Vagas sem nível identificável são mantidas (ambíguas).
     - Vagas com nível identificado só passam se houver interseção com ``wanted``.
     """
     wanted_set = {w.strip().lower() for w in wanted if w.strip()}
-    # só conhecemos esses níveis; ignora valores como "diretor"/"executivo"
     wanted_set &= set(_SENIORITY_TERMS.keys())
     if not wanted_set:
         return jobs
 
     kept: list[JobPosting] = []
     for job in jobs:
-        levels = detect_seniority_levels(job.title)
-        if not levels:
-            levels = detect_seniority_levels((job.description or "")[:200])
+        levels = _job_seniority_levels(job)
         if not levels or (levels & wanted_set):
             kept.append(job)
     return kept
+
+
+def seniority_mismatch_penalty(wanted: list[str], job: JobPosting) -> float:
+    """Penalidade 0–25 quando a vaga declara nível incompatível (modo amplo)."""
+    wanted_set = {w.strip().lower() for w in wanted if w.strip()} & set(_SENIORITY_TERMS.keys())
+    if not wanted_set:
+        return 0.0
+    levels = _job_seniority_levels(job)
+    if not levels or (levels & wanted_set):
+        return 0.0
+    # incompatível explícito (ex.: pediu júnior, título diz sênior)
+    if "junior" in wanted_set and levels & {"senior", "pleno"}:
+        return 25.0
+    if "estagio" in wanted_set and levels & {"senior", "pleno"}:
+        return 22.0
+    if "senior" in wanted_set and levels & {"junior", "estagio"}:
+        return 20.0
+    return 15.0
 
 
 def extract_query_terms(keywords: str) -> list[str]:
@@ -133,13 +181,16 @@ def filter_by_location(
     *,
     fallback: bool = True,
     location_filter: LocationFilter | None = None,
+    source_by_id: dict[str, str] | None = None,
 ) -> list[JobPosting]:
     """Mantém vagas cuja localização combina com o filtro do usuário."""
     filt = location_filter or parse_location(location or "")
     if filt.scope.value == "any" and not (location or "").strip():
         return jobs
     use_fallback = fallback and not filt.strict
-    return filter_jobs_by_location(jobs, filt, fallback=use_fallback)
+    return filter_jobs_by_location(
+        jobs, filt, fallback=use_fallback, source_by_id=source_by_id,
+    )
 
 
 def filter_by_relevance(

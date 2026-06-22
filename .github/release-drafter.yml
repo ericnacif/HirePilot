@@ -1,0 +1,46 @@
+name-template: 'HirePilot v$RESOLVED_VERSION'
+tag-template: 'v$RESOLVED_VERSION'
+change-template: '- $TITLE (#$NUMBER) @$AUTHOR'
+change-title-uses-prefix-label: false
+
+categories:
+  - title: '🚀 Novidades'
+    labels:
+      - feature
+      - enhancement
+  - title: '🐛 Correções'
+    labels:
+      - fix
+      - bug
+  - title: '📚 Documentação'
+    labels:
+      - documentation
+      - docs
+  - title: '🔧 Manutenção'
+    labels:
+      - chore
+      - refactor
+      - ci
+  - title: '📦 Outros'
+    labels:
+      - '*'
+
+template: |
+  ## Resumo
+
+  $CHANGES
+
+  ## Como instalar
+
+  Veja [INSTALAR.md](INSTALAR.md) — baixe **HirePilot-Setup.exe** (recomendado) ou **HirePilot-portable.zip**.
+
+  ## Arquivos deste release
+
+  | Arquivo | Descrição |
+  |---------|-----------|
+  | `HirePilot-Setup.exe` | Instalador com atalho |
+  | `HirePilot.exe` | Edição leve (APIs) |
+  | `HirePilot-Full.exe` | Edição completa (LinkedIn/InfoJobs) |
+  | `HirePilot-portable.zip` | Leve portátil + LEIA-ME |
+
+  **Checksums:** disponíveis nos artefatos do workflow de release.

@@ -12,15 +12,40 @@ from cv_apply.config import Settings
 from cv_apply.filters import SearchFilters
 from cv_apply.profile import JobPosting
 
+# TTL em segundos por fonte (APIs estáveis = mais tempo; browser = menos)
+SOURCE_TTL_SECONDS: dict[str, int] = {
+    "gupy": 900,
+    "solides": 900,
+    "trampos": 600,
+    "indeed": 600,
+    "jooble": 600,
+    "careerjet": 600,
+    "remotive": 900,
+    "remoteok": 900,
+    "greenhouse": 1800,
+    "empregoscom": 600,
+    "catho": 300,
+    "vagascom": 300,
+    "infojobs": 300,
+    "linkedin": 180,
+    "trabalhabrasil": 300,
+}
+DEFAULT_TTL = 600
+
+
+def ttl_for_source(source: str) -> int:
+    return SOURCE_TTL_SECONDS.get(source, DEFAULT_TTL)
+
 
 @dataclass
 class _CacheEntry:
     jobs: list[JobPosting]
     expires_at: float
+    source: str
 
 
 class SearchCache:
-    def __init__(self, ttl_seconds: int = 600, max_entries: int = 80):
+    def __init__(self, ttl_seconds: int = 600, max_entries: int = 120):
         self._ttl = ttl_seconds
         self._max = max_entries
         self._data: dict[str, _CacheEntry] = {}
@@ -60,13 +85,22 @@ class SearchCache:
                 return None
             return [JobPosting.model_validate(j.model_dump()) for j in entry.jobs]
 
-    def set(self, key: str, jobs: list[JobPosting]) -> None:
+    def set(self, key: str, jobs: list[JobPosting], *, source: str = "") -> None:
+        ttl = ttl_for_source(source) if source else self._ttl
         with self._lock:
             self._prune()
             self._data[key] = _CacheEntry(
                 jobs=[JobPosting.model_validate(j.model_dump()) for j in jobs],
-                expires_at=time.time() + self._ttl,
+                expires_at=time.time() + ttl,
+                source=source,
             )
+
+    def invalidate_source(self, source: str) -> int:
+        with self._lock:
+            keys = [k for k, v in self._data.items() if v.source == source]
+            for k in keys:
+                del self._data[k]
+            return len(keys)
 
 
 _cache: SearchCache | None = None

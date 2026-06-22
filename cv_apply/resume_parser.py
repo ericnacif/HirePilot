@@ -65,6 +65,15 @@ def extract_name(text: str) -> str | None:
     first = lines[0]
     if "@" in first or re.search(r"\d{3,}", first):
         return None
+    first_norm = _normalize(first)
+    doc_titles = (
+        "relatório", "relatorio", "nota fiscal", "contrato", "plano de",
+        "certificado", "declaração", "declaracao", "ata de", "memorando",
+        "proposta comercial", "ordem de serviço", "ordem de servico",
+        "auditoria", "comprovante", "recibo", "fatura", "boleto",
+    )
+    if any(first_norm.startswith(p) or p in first_norm[:35] for p in doc_titles):
+        return None
     if len(first.split()) <= 6 and len(first) < 60:
         return first
     return None
@@ -160,17 +169,141 @@ def extract_locations(text: str) -> list[str]:
 
 
 def extract_summary(text: str) -> str | None:
-    keywords = ["resumo", "summary", "sobre mim", "about me", "perfil", "profile"]
+    section_headers = {
+        "resumo", "resumo profissional", "summary", "sobre mim", "about me",
+        "perfil", "perfil profissional", "profile",
+    }
     lines = text.splitlines()
     for i, line in enumerate(lines):
-        if any(kw in _normalize(line) for kw in keywords):
-            summary_lines = []
-            for j in range(i + 1, min(i + 6, len(lines))):
-                if lines[j].strip():
-                    summary_lines.append(lines[j].strip())
-            if summary_lines:
-                return " ".join(summary_lines)
+        line_norm = _normalize(line.strip())
+        if not line_norm:
+            continue
+        is_header = line_norm in section_headers
+        if not is_header and line_norm.startswith("resumo"):
+            is_header = "profissional" in line_norm and len(line_norm) < 40
+        if not is_header:
+            continue
+        summary_lines = []
+        for j in range(i + 1, min(i + 6, len(lines))):
+            if lines[j].strip():
+                summary_lines.append(lines[j].strip())
+        if summary_lines:
+            return " ".join(summary_lines)
     return None
+
+
+_RESUME_SECTIONS = (
+    "experiência", "experiencia", "experience", "experiencia profissional",
+    "formação", "formacao", "education", "escolaridade", "acadêmica", "academica",
+    "habilidades", "competências", "competencias", "skills", "conhecimentos",
+    "qualificações", "qualificacoes", "curriculum vitae", "curriculo", "currículo",
+    "historico profissional", "histórico profissional", "trajetoria", "trajetória",
+    "dados pessoais", "objetivo profissional", "resumo profissional",
+)
+
+_NON_RESUME_MARKERS = (
+    "nota fiscal", "nf-e", "danfe", "chave de acesso", "valor total da nota",
+    "destinatário", "emitente", "icms", "cfop", "duplicata",
+    "cláusula", "clausula", "contratante", "contratado", "instrumento particular",
+    "termo de uso", "política de privacidade", "todos os direitos reservados",
+    "ingredientes:", "modo de preparo",
+    "relatório de auditoria", "relatorio de auditoria",
+    "plano de ação", "plano de acao", "auditoria interna", "auditoria externa",
+    "percentual alcançado", "percentual alcancado",
+    "data limite adequação", "data limite adequacao",
+    "resposta: cumpre", "resposta:cumpre",
+    "nível: básico", "nivel: basico", "nível: intermediário", "nivel: intermediario",
+    "protocolo de certificação", "protocolo de certificacao",
+)
+
+_STRONG_NON_RESUME_MARKERS = (
+    "relatório de auditoria",
+    "relatorio de auditoria",
+    "nota fiscal eletrônica",
+    "nota fiscal eletronica",
+    "plano de ação",
+    "plano de acao",
+    "danfe",
+)
+
+
+def _term_hits(norm: str, terms: tuple[str, ...]) -> int:
+    return sum(1 for term in terms if term in norm)
+
+
+def validate_resume_text(text: str) -> None:
+    """Levanta ``ValueError`` se o texto não parecer um currículo."""
+    stripped = (text or "").strip()
+    if not stripped:
+        raise ValueError(
+            "Não foi possível extrair texto do arquivo. "
+            "Envie um PDF ou Word com texto selecionável (não só imagem)."
+        )
+
+    norm = _normalize(stripped)
+    words = len(stripped.split())
+    if words < 30:
+        raise ValueError(
+            "Texto insuficiente — o arquivo pode estar só como imagem ou não ser um currículo."
+        )
+
+    head = norm[:600]
+    if any(marker in head for marker in _STRONG_NON_RESUME_MARKERS):
+        raise ValueError(
+            "Este arquivo não parece ser um currículo (parece outro tipo de documento)."
+        )
+
+    non_resume = _term_hits(norm, _NON_RESUME_MARKERS)
+    if non_resume >= 2:
+        raise ValueError(
+            "Este arquivo não parece ser um currículo (parece outro tipo de documento)."
+        )
+
+    has_contact = bool(extract_email(stripped) or extract_phone(stripped))
+    sections = _term_hits(norm, _RESUME_SECTIONS)
+    skills = extract_skills(stripped)
+    titles = extract_job_titles(stripped)
+    has_profile_link = "linkedin.com" in norm or "github.com" in norm or "lattes" in norm
+    has_summary = bool(extract_summary(stripped))
+    has_name = bool(extract_name(stripped))
+
+    has_resume_core = (
+        has_contact
+        or titles
+        or sections >= 2
+        or (has_profile_link and sections >= 1)
+    )
+    if not has_resume_core:
+        raise ValueError(
+            "Este arquivo não parece ser um currículo. "
+            "Inclua contato, experiência, formação ou habilidades."
+        )
+
+    signals = 0
+    if has_contact:
+        signals += 2
+    if sections:
+        signals += min(sections, 2) + 1
+    if len(skills) >= 2:
+        signals += 1
+    if titles:
+        signals += 1
+    if extract_years_experience(stripped) is not None:
+        signals += 1
+    if has_summary:
+        signals += 1
+    if has_profile_link:
+        signals += 1
+    if has_name:
+        signals += 1
+
+    if signals < 3:
+        raise ValueError(
+            "Este arquivo não parece ser um currículo. "
+            "Inclua contato, experiência, formação ou habilidades."
+        )
+    if non_resume >= 1 and signals < 5:
+        raise ValueError("Este arquivo não parece ser um currículo.")
 
 
 def parse_resume(path: Path) -> CandidateProfile:
@@ -179,8 +312,7 @@ def parse_resume(path: Path) -> CandidateProfile:
         raise FileNotFoundError(f"Currículo não encontrado: {path}")
 
     raw_text = extract_text(path)
-    if not raw_text.strip():
-        raise ValueError(f"Não foi possível extrair texto de: {path}")
+    validate_resume_text(raw_text)
 
     return CandidateProfile(
         name=extract_name(raw_text),

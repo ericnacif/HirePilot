@@ -8,6 +8,7 @@ from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 
 from cv_apply.ats import analyze_ats
 from cv_apply.config import Settings
@@ -19,6 +20,9 @@ from cv_apply.relevance import (
     filter_by_experience,
     filter_by_location,
     filter_by_relevance,
+    resolve_wanted_experience,
+    seniority_mismatch_penalty,
+    term_in_job_text,
 )
 from cv_apply.salary import extract_salary, filter_by_salary
 from cv_apply.sectors import (
@@ -27,7 +31,7 @@ from cv_apply.sectors import (
     sector_query,
     sector_search_queries,
 )
-from cv_apply.sources import AVAILABLE_SOURCES, dedupe_jobs, run_sources
+from cv_apply.sources import AVAILABLE_SOURCES, dedupe_jobs, dedupe_jobs_tracked, run_sources
 
 GLOBAL_JOB_CAP = 100
 
@@ -147,12 +151,20 @@ def process_raw_jobs(
     all_jobs: list[JobPosting],
     ctx: SearchContext,
     settings: Settings,
-) -> list[JobPosting]:
+    profile: CandidateProfile | None = None,
+    source_by_id: dict[str, str] | None = None,
+) -> tuple[list[JobPosting], dict[str, list[str]]]:
     """Dedupe, localização, senioridade, relevância e salário."""
+    also_sources: dict[str, list[str]] = {}
     if not all_jobs:
-        return []
+        return [], also_sources
 
-    all_jobs = dedupe_jobs(all_jobs)
+    if source_by_id:
+        tracked = dedupe_jobs_tracked(all_jobs, source_by_id)
+        all_jobs = tracked.jobs
+        also_sources = tracked.also_sources
+    else:
+        all_jobs = dedupe_jobs(all_jobs)
 
     filt = ctx.location_filter or parse_location(settings.search_location)
     if filt.scope.value != "any":
@@ -162,37 +174,114 @@ def process_raw_jobs(
             settings.search_location,
             fallback=use_fallback,
             location_filter=filt,
+            source_by_id=source_by_id,
         )
 
-    # Modo amplo: filtros refinados viram preferência no ranking, não exclusão.
+    wanted_levels = resolve_wanted_experience(
+        settings.search_experience,
+        profile.seniority if profile else None,
+    )
+    if wanted_levels and not ctx.broad:
+        all_jobs = filter_by_experience(all_jobs, wanted_levels)
+
+    user_terms = extract_query_terms(ctx.user_keywords)
+    gate_terms = user_terms or sector_gate_terms(ctx.sector)
+    if gate_terms:
+        if ctx.broad and not user_terms:
+            # Modo amplo + área sem palavras-chave: relevância só no ranking, não descarta.
+            pass
+        else:
+            filtered = filter_by_relevance(all_jobs, gate_terms, fallback=ctx.broad)
+            if not ctx.broad:
+                all_jobs = filtered
+            elif user_terms and filtered:
+                all_jobs = filtered
+            # broad + só setor, ou broad + keywords sem match: mantém lista original
+
     if not ctx.broad:
         all_jobs = filter_by_salary(all_jobs, ctx.salary_min, ctx.salary_max)
-        all_jobs = filter_by_experience(all_jobs, settings.search_experience)
-        user_terms = extract_query_terms(ctx.user_keywords)
-        gate_terms = user_terms or sector_gate_terms(ctx.sector)
-        all_jobs = filter_by_relevance(all_jobs, gate_terms, fallback=False)
     else:
         if ctx.salary_min is not None or ctx.salary_max is not None:
             all_jobs = filter_by_salary(all_jobs, ctx.salary_min, ctx.salary_max)
 
-    return all_jobs
+    return all_jobs, also_sources
+
+
+def rank_jobs_for_guest(
+    jobs: list[JobPosting],
+    ctx: SearchContext,
+    settings: Settings,
+) -> list[JobMatch]:
+    """Ranqueia vagas só com base nos filtros da busca (sem currículo)."""
+    terms = extract_query_terms(ctx.user_keywords)
+    wanted = resolve_wanted_experience(settings.search_experience, None)
+    matches: list[JobMatch] = []
+
+    for job in jobs:
+        haystack = f"{job.title} {job.description or ''}"
+        score = 42.0
+        reasons: list[str] = []
+
+        if terms:
+            matched = [t for t in terms if term_in_job_text(t, haystack)]
+            if matched:
+                score += min(48.0, len(matched) * 14.0)
+                reasons.append(f"Termos da busca: {', '.join(matched[:5])}")
+            else:
+                reasons.append("Vaga retornada pelas fontes selecionadas")
+        else:
+            reasons.append("Vaga na área/filtros escolhidos")
+
+        if wanted:
+            pen = seniority_mismatch_penalty(wanted, job)
+            if pen:
+                score = max(20.0, score - pen * 0.5)
+
+        matches.append(
+            JobMatch(
+                job=job,
+                score=round(min(96.0, score), 1),
+                reasons=reasons,
+                skill_overlap=[],
+            )
+        )
+
+    matches.sort(
+        key=lambda m: (m.score, posted_sort_key(m.job.posted_at)),
+        reverse=True,
+    )
+    return matches
 
 
 def rank_and_boost(
-    profile: CandidateProfile,
+    profile: CandidateProfile | None,
     jobs: list[JobPosting],
     ctx: SearchContext,
     settings: Settings,
     *,
     use_semantic: bool | None = None,
 ) -> list[JobMatch]:
+    if profile is None:
+        return rank_jobs_for_guest(jobs, ctx, settings)
+
     sem = ctx.use_semantic if use_semantic is None else use_semantic
     matches = rank_jobs(profile, jobs, min_score=0, use_semantic=sem)
     matches = apply_sector_boost(matches, ctx.sector)
     if ctx.user_keywords:
         matches = apply_keyword_boost(matches, ctx.user_keywords)
+
+    wanted = resolve_wanted_experience(
+        settings.search_experience, profile.seniority
+    )
+    if wanted:
+        for m in matches:
+            pen = seniority_mismatch_penalty(wanted, m.job)
+            if pen:
+                m.score = round(max(0.0, m.score - pen), 1)
+
     if ctx.broad:
         matches = apply_preference_boost(matches, settings, location_filter=ctx.location_filter)
+    matches.sort(key=lambda m: m.score, reverse=True)
     return matches
 
 
@@ -233,14 +322,22 @@ def apply_display_limits(
 
 def job_row(
     m: JobMatch,
-    profile: CandidateProfile,
+    profile: CandidateProfile | None,
     *,
     source: str,
     applied: bool,
     is_new: bool,
     format_posted,
+    resume_path: Path | None = None,
+    also_in: list[str] | None = None,
 ) -> dict:
-    report = analyze_ats(profile, m.job, resume_path=None)
+    if profile:
+        report = analyze_ats(profile, m.job, resume_path=resume_path)
+        ats = report.ats_score
+        cv_tips = report.suggestions[:3]
+    else:
+        ats = None
+        cv_tips = []
     desc = (m.job.description or "").strip().replace("\n", " ")
     if len(desc) > 220:
         desc = desc[:220].rsplit(" ", 1)[0] + "…"
@@ -252,11 +349,11 @@ def job_row(
         "location": m.job.location,
         "url": m.job.url,
         "score": m.score,
-        "ats": report.keyword_coverage,
+        "ats": ats,
         "skills": m.skill_overlap[:8],
         "reasons": m.reasons,
         "reasons_short": "; ".join(m.reasons[:2]),
-        "cv_tips": report.suggestions[:3],
+        "cv_tips": cv_tips,
         "source": source,
         "posted_at": format_posted(m.job.posted_at),
         "posted_sort": posted_sort_key(m.job.posted_at),
@@ -265,6 +362,7 @@ def job_row(
         "salary": sal_text,
         "applied": applied,
         "is_new": is_new,
+        "also_in": also_in or [],
     }
 
 
@@ -300,7 +398,7 @@ def _sources_status(
 
 
 def _assemble_result(
-    profile: CandidateProfile,
+    profile: CandidateProfile | None,
     settings: Settings,
     ctx: SearchContext,
     *,
@@ -312,11 +410,14 @@ def _assemble_result(
     t0: float,
     source_meta: dict[str, dict] | None = None,
     fast_rank: bool = False,
+    resume_path: Path | None = None,
 ) -> SearchResult:
     source_meta = source_meta or {}
     sources_status = _sources_status(settings, raw_by_source, source_meta=source_meta)
     fetched_count = len(dedupe_jobs(all_jobs)) if all_jobs else 0
-    filtered = process_raw_jobs(all_jobs, ctx, settings)
+    filtered, also_sources = process_raw_jobs(
+        all_jobs, ctx, settings, profile, source_by_id=source_by_id,
+    )
 
     if not filtered:
         filt = ctx.location_filter
@@ -380,6 +481,8 @@ def _assemble_result(
                 applied=m.job.id in applied_ids,
                 is_new=is_new,
                 format_posted=format_posted,
+                resume_path=resume_path,
+                also_in=also_sources.get(m.job.id, []),
             )
         )
 
@@ -409,6 +512,7 @@ def _assemble_result(
             "fast_rank": fast_rank,
             "location_label": (ctx.location_filter.display_label() if ctx.location_filter else ""),
             "location_scope": (ctx.location_filter.scope.value if ctx.location_filter else ""),
+            "requested_sources": list(settings.search_sources),
         },
         job_models=job_models,
         source_by_id=source_by_id,
@@ -417,16 +521,18 @@ def _assemble_result(
 
 
 def execute_search(
-    profile: CandidateProfile,
+    profile: CandidateProfile | None,
     settings: Settings,
     ctx: SearchContext,
     *,
     applied_ids: set[str],
     format_posted,
-    on_source_done: Callable[[str, list[JobPosting]], None] | None = None,
+    on_source_start: Callable[[str], None] | None = None,
+    on_source_done: Callable[[str, list[JobPosting], dict], None] | None = None,
     on_partial: Callable[[SearchResult], None] | None = None,
     use_cache: bool = True,
     t0: float | None = None,
+    resume_path: Path | None = None,
 ) -> SearchResult:
     """Busca completa; ``on_partial`` re-ranqueia e notifica após cada fonte."""
     t0 = t0 or time.perf_counter()
@@ -435,13 +541,15 @@ def execute_search(
     raw_by_source: dict[str, list[JobPosting]] = {}
     source_meta: dict[str, dict] = {}
 
-    def _after_source(name: str, jobs: list[JobPosting]) -> None:
+    def _after_source(name: str, jobs: list[JobPosting], meta: dict | None = None) -> None:
+        if meta:
+            source_meta[name] = meta
         raw_by_source[name] = jobs
         for job in jobs:
             source_by_id[job.id] = name
             all_jobs.append(job)
         if on_source_done:
-            on_source_done(name, jobs)
+            on_source_done(name, jobs, meta or {})
         if on_partial:
             on_partial(
                 _assemble_result(
@@ -456,16 +564,19 @@ def execute_search(
                     t0=t0,
                     source_meta=dict(source_meta),
                     fast_rank=True,
+                    resume_path=resume_path,
                 )
             )
 
-    _, source_meta = run_sources(
+    _, final_meta = run_sources(
         settings,
         max_jobs=ctx.limit_per_source,
         on_log=None,
+        on_source_start=on_source_start,
         on_source_done=_after_source,
         use_cache=use_cache,
     )
+    source_meta.update(final_meta)
 
     return _assemble_result(
         profile,
@@ -479,4 +590,5 @@ def execute_search(
         t0=t0,
         source_meta=source_meta,
         fast_rank=False,
+        resume_path=resume_path,
     )

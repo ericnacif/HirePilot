@@ -46,6 +46,16 @@ _REMOTE_HINTS = (
     "worldwide", "global", "distributed", "trabalho remoto",
 )
 
+# Padrões comuns em boards 100% remotos (Remotive, RemoteOK, etc.)
+_REMOTE_BOARD_LOCATION_HINTS = (
+    "worldwide", "anywhere", "global", "distributed", "work from home",
+    "wfh", "americas", "europe", "africa", "asia", "latam", "emea", "apac",
+    "timezone", "time zone", "timezones", "utc", "gmt",
+)
+
+# Fontes cujo catálogo é remoto por padrão — não exigir "remote" no campo location.
+REMOTE_NATIVE_SOURCES = frozenset({"remoteok", "remotive"})
+
 _HYBRID_HINTS = ("híbrido", "hibrido", "hybrid")
 
 _BRAZIL_HINTS = ("brasil", "brazil", "br ", " - br", "(br)")
@@ -269,17 +279,33 @@ def _parse_freeform(raw: str) -> tuple[str, str]:
     return city.strip(), state.upper() if state else ""
 
 
-def job_matches_location(job_location: str, filt: LocationFilter) -> bool:
+def job_matches_location(
+    job_location: str,
+    filt: LocationFilter,
+    *,
+    source: str = "",
+) -> bool:
     loc = (job_location or "").strip()
     if filt.scope == LocationScope.ANY:
+        return True
+
+    if filt.scope == LocationScope.REMOTE and source in REMOTE_NATIVE_SOURCES:
         return True
 
     remote = _is_remote_text(loc)
     hybrid = _is_hybrid_text(loc)
     foreign = _is_foreign_text(loc)
+    norm = _norm(loc)
 
     if filt.scope == LocationScope.REMOTE:
-        return remote or hybrid or (not loc)
+        if remote or hybrid or not loc:
+            return True
+        if any(h in norm for h in _REMOTE_BOARD_LOCATION_HINTS):
+            return True
+        # Boards globais listam país/região do empregador, não "remoto" no texto.
+        if foreign:
+            return True
+        return False
 
     if filt.scope == LocationScope.FOREIGN:
         return foreign and _norm(loc) not in ("brasil", "brazil")
@@ -328,10 +354,15 @@ def filter_jobs_by_location(
     filt: LocationFilter,
     *,
     fallback: bool = False,
+    source_by_id: dict[str, str] | None = None,
 ) -> list[JobPosting]:
     if filt.scope == LocationScope.ANY:
         return jobs
-    kept = [j for j in jobs if job_matches_location(j.location, filt)]
+    src_map = source_by_id or {}
+    kept = [
+        j for j in jobs
+        if job_matches_location(j.location, filt, source=src_map.get(j.id, ""))
+    ]
     if kept or not fallback:
         return kept
     return jobs

@@ -65,6 +65,10 @@ app = Flask(
 app.secret_key = os.environ.get("CV_APPLY_SECRET", os.urandom(24).hex())
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
 
+from cv_apply.web_auth import register_web_auth
+
+register_web_auth(app)
+
 ALLOWED_EXT = {".pdf", ".docx", ".doc"}
 VALID_SENIORITY = {"estagiário", "júnior", "pleno", "sênior"}
 SESSION_TTL_SECONDS = 2 * 60 * 60  # 2h sem uso → expira
@@ -183,6 +187,7 @@ def _run_search(
     data: dict,
     sid: str,
     *,
+    on_source_start=None,
     on_source_done=None,
     on_partial=None,
 ) -> dict:
@@ -206,9 +211,11 @@ def _run_search(
         ctx,
         applied_ids=applied_ids,
         format_posted=_format_posted,
+        on_source_start=on_source_start,
         on_source_done=on_source_done,
         on_partial=on_partial,
         use_cache=not data.get("no_cache"),
+        resume_path=sess.resume_path if sess.profile else None,
     )
 
     sess.jobs = result.job_models
@@ -222,7 +229,7 @@ def _run_search(
     return {
         "jobs": result.jobs,
         "sources": result.sources_status,
-        "meta": result.meta,
+        "meta": {**result.meta, "guest": sess.profile is None},
     }
 
 
@@ -287,6 +294,19 @@ def _profile_summary(profile: CandidateProfile, resume_path: Path | None) -> dic
     }
 
 
+def require_session(fn: Callable) -> Callable:
+    """Injeta a sessão atual (currículo opcional)."""
+
+    @wraps(fn)
+    def wrapper(*args: Any, **kwargs: Any):
+        sess = store.get(_sid())
+        if not sess:
+            return jsonify({"error": "Sessão inválida."})
+        return fn(sess, *args, **kwargs)
+
+    return wrapper
+
+
 def require_profile(fn: Callable) -> Callable:
     """Injeta a sessão atual; erro padrão se o currículo ainda não foi enviado."""
 
@@ -301,13 +321,13 @@ def require_profile(fn: Callable) -> Callable:
 
 
 def require_job(fn: Callable) -> Callable:
-    """Como :func:`require_profile`, mas também resolve a vaga pelo ``id``."""
+    """Resolve a vaga pelo ``id``; currículo opcional (só exigido em algumas rotas)."""
 
     @wraps(fn)
     def wrapper(*args: Any, **kwargs: Any):
         sess = store.get(_sid())
-        if not sess or not sess.profile:
-            return jsonify({"error": "Envie seu currículo primeiro."})
+        if not sess:
+            return jsonify({"error": "Sessão expirada."})
         data = request.get_json(silent=True) or {}
         job = sess.jobs.get(data.get("id"))
         if not job:
@@ -355,7 +375,8 @@ def _global_rate_limit():
 @app.route("/")
 def index():
     _sid()
-    return render_template("index.html")
+    from cv_apply import __version__
+    return render_template("index.html", app_version=__version__)
 
 
 @app.route("/api/upload", methods=["POST"])
@@ -378,6 +399,9 @@ def api_upload():
 
     try:
         profile = parse_resume(dest)
+    except ValueError as exc:
+        _delete_resume_file(dest)
+        return jsonify({"error": str(exc)})
     except Exception as exc:
         logger.exception("Falha ao ler currículo")
         _delete_resume_file(dest)
@@ -402,7 +426,7 @@ def api_upload():
 
 
 @app.route("/api/search", methods=["POST"])
-@require_profile
+@require_session
 def api_search(sess: SessionData):
     if not sess.rate_ok("search", SEARCH_RATE_MAX, RATE_LIMIT_WINDOW):
         return jsonify({"error": "Muitas buscas seguidas. Aguarde alguns segundos."}), 429
@@ -416,7 +440,7 @@ def api_search(sess: SessionData):
 
 
 @app.route("/api/search/stream", methods=["POST"])
-@require_profile
+@require_session
 def api_search_stream(sess: SessionData):
     if not sess.rate_ok("search", SEARCH_RATE_MAX, RATE_LIMIT_WINDOW):
         return jsonify({"error": "Muitas buscas seguidas. Aguarde alguns segundos."}), 429
@@ -427,8 +451,19 @@ def api_search_stream(sess: SessionData):
         q: queue.Queue = queue.Queue()
         holder: dict = {}
 
-        def on_source(name: str, jobs: list) -> None:
-            q.put({"event": "source", "source": name, "fetched": len(jobs), "count": len(jobs)})
+        def on_source_start(name: str) -> None:
+            q.put({"event": "source_start", "source": name})
+
+        def on_source(name: str, jobs: list, meta: dict | None = None) -> None:
+            meta = meta or {}
+            q.put({
+                "event": "source",
+                "source": name,
+                "fetched": len(jobs),
+                "count": len(jobs),
+                "hint": meta.get("hint"),
+                "cached": bool(meta.get("cached")),
+            })
 
         def on_partial(result) -> None:
             q.put({
@@ -442,6 +477,7 @@ def api_search_stream(sess: SessionData):
             try:
                 holder["payload"] = _run_search(
                     sess, data, sid,
+                    on_source_start=on_source_start,
                     on_source_done=on_source,
                     on_partial=on_partial,
                 )
@@ -469,7 +505,7 @@ def api_search_stream(sess: SessionData):
 
 
 @app.route("/api/job/detail", methods=["POST"])
-@require_profile
+@require_session
 def api_job_detail(sess: SessionData):
     data = request.get_json(silent=True) or {}
     job = sess.jobs.get(data.get("id"))
@@ -490,15 +526,51 @@ def api_job_detail(sess: SessionData):
     })
 
 
+@app.route("/api/sources/invalidate", methods=["POST"])
+@require_session
+def api_invalidate_source():
+    data = request.get_json(silent=True) or {}
+    source = (data.get("source") or "").strip().lower()
+    if source not in AVAILABLE_SOURCES:
+        return jsonify({"error": "Fonte inválida"}), 400
+    from cv_apply.search_cache import get_search_cache
+
+    cleared = get_search_cache().invalidate_source(source)
+    return jsonify({"ok": True, "source": source, "cleared": cleared})
+
+
 @app.route("/api/meta", methods=["GET"])
 def api_meta():
     from cv_apply import __version__
+    from cv_apply.web_auth import web_pin_enabled
 
+    settings = get_settings()
+    jooble_key = (getattr(settings, "jooble_api_key", None) or os.getenv("JOOBLE_API_KEY") or "").strip()
+    careerjet_key = (getattr(settings, "careerjet_api_key", None) or os.getenv("CAREERJET_API_KEY") or "").strip()
     full = os.getenv("HIREPILOT_FULL", "").lower() in {"1", "true", "yes"}
     return jsonify({
         "version": __version__,
         "variant": "full" if full else "lite",
         "release_url": "https://github.com/ericnacif/HirePilot/releases/latest",
+        "local_only": True,
+        "auth_required": web_pin_enabled(),
+        "jooble_configured": bool(jooble_key),
+        "careerjet_configured": bool(careerjet_key),
+    })
+
+
+@app.route("/api/sources/health", methods=["GET"])
+def api_sources_health():
+    from cv_apply import source_health as sh
+    from cv_apply.source_health import check_all_sources_health, health_summary
+
+    force = request.args.get("refresh") == "1"
+    sources = check_all_sources_health(force=force)
+    return jsonify({
+        "sources": sources,
+        "summary": health_summary(sources),
+        "checked_at": sh._HEALTH_CACHE.get("at"),
+        "cache_ttl_seconds": sh.CACHE_TTL_SECONDS,
     })
 
 
@@ -612,10 +684,30 @@ def api_alert_hits():
 @app.route("/api/ats", methods=["POST"])
 @require_job
 def api_ats(sess: SessionData, job: JobPosting, data: dict):
+    from cv_apply.ats import analyze_job_requirements
+
+    if not sess.profile:
+        req = analyze_job_requirements(job)
+        return jsonify({
+            "needs_resume": True,
+            "coverage": None,
+            "ats_score": None,
+            "present": [],
+            "missing": req["job_keywords"],
+            "suggestions": [
+                "Envie seu currículo para ver compatibilidade ATS com esta vaga.",
+            ],
+            "job_keywords": req["job_keywords"],
+            "seniority": req.get("seniority"),
+        })
+
     report = analyze_ats(sess.profile, job, resume_path=sess.resume_path)
     return jsonify({
         "coverage": report.keyword_coverage,
         "ats_score": report.ats_score,
+        "format_score": report.format_score,
+        "title_alignment": report.title_alignment,
+        "seniority_alignment": report.seniority_alignment,
         "present": report.present_keywords,
         "missing": report.missing_keywords,
         "suggestions": report.suggestions,
@@ -625,6 +717,8 @@ def api_ats(sess: SessionData, job: JobPosting, data: dict):
 @app.route("/api/tailor", methods=["POST"])
 @require_job
 def api_tailor(sess: SessionData, job: JobPosting, data: dict):
+    if not sess.profile:
+        return jsonify({"error": "Envie seu currículo para gerar versão adaptada."})
     md = tailor_resume_markdown(sess.profile, job, sess.resume_path)
     return jsonify({"markdown": md})
 
@@ -691,6 +785,20 @@ def api_export():
     )
 
 
+@app.route("/api/profile", methods=["GET"])
+def api_profile_get():
+    sid = _sid()
+    sess = store.get(sid, create=False)
+    if not sess or not sess.profile:
+        return jsonify({"profile": None})
+    summary = _profile_summary(sess.profile, sess.resume_path)
+    summary["job_hint"] = sess.profile.job_titles[0] if sess.profile.job_titles else (
+        " ".join(sess.profile.skills[:2]) if sess.profile.skills else "desenvolvedor"
+    )
+    summary["suggested_keywords"] = _suggest_keywords(sess.profile)
+    return jsonify({"profile": summary})
+
+
 @app.route("/api/profile", methods=["POST"])
 @require_profile
 def api_profile(sess: SessionData):
@@ -698,6 +806,18 @@ def api_profile(sess: SessionData):
     seniority = (data.get("seniority") or "").strip().lower()
     sess.profile.seniority = seniority if seniority in VALID_SENIORITY else None
     return jsonify({"ok": True, "seniority": sess.profile.seniority})
+
+
+@app.route("/api/profile", methods=["DELETE"])
+@require_session
+def api_profile_delete(sess: SessionData):
+    if sess.resume_path:
+        _delete_resume_file(sess.resume_path)
+    sess.profile = None
+    sess.resume_path = None
+    sess.jobs.clear()
+    sess.source_by_job.clear()
+    return jsonify({"ok": True})
 
 
 @app.route("/api/applied", methods=["POST"])
@@ -709,11 +829,35 @@ def api_applied(sess: SessionData):
         return jsonify({"error": "id ausente"})
     if data.get("applied"):
         sess.applied.add(job_id)
-        _db().save_applied_meta(_sid(), job_id, data.get("meta") or {"id": job_id})
+        meta = data.get("meta") or {"id": job_id}
+        if not meta.get("pipeline_status"):
+            meta["pipeline_status"] = "candidatado"
+        _db().save_applied_meta(_sid(), job_id, meta)
     else:
         sess.applied.discard(job_id)
         _db().remove_applied_meta(_sid(), job_id)
     return jsonify({"ok": True, "applied": job_id in sess.applied})
+
+
+@app.route("/api/pipeline", methods=["POST"])
+@require_session
+def api_pipeline(sess: SessionData):
+    """Atualiza estágio do kanban de candidaturas."""
+    data = request.get_json(silent=True) or {}
+    job_id = data.get("id")
+    status = (data.get("status") or "").strip().lower()
+    valid = {"interesse", "candidatado", "entrevista", "oferta", "recusado"}
+    if not job_id or status not in valid:
+        return jsonify({"error": "id e status válidos são obrigatórios"}), 400
+    sid = _sid()
+    db = _db()
+    state = db.get_web_state(sid)
+    meta = dict(state.get("applied", {}).get(job_id) or {"id": job_id})
+    meta["pipeline_status"] = status
+    meta["pipeline_updated_at"] = datetime.now().isoformat()
+    db.save_applied_meta(sid, job_id, meta)
+    sess.applied.add(job_id)
+    return jsonify({"ok": True, "id": job_id, "status": status})
 
 
 def _port_in_use(host: str, port: int) -> bool:
@@ -777,6 +921,12 @@ def run_server(
         _alert_hits.extend(hits)
         for h in hits:
             logger.info("Alerta '%s': %d vaga(s) nova(s)", h.get("name"), h.get("new_count"))
+        try:
+            from cv_apply.notify import notify_alert_hits
+
+            notify_alert_hits(hits)
+        except Exception as exc:
+            logger.debug("Notificações externas: %s", exc)
 
     from cv_apply.alert_scheduler import start_alert_scheduler
 

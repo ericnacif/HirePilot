@@ -1,323 +1,425 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-BR" data-theme="light">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#F6F8FC">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#FFFFFF">
 <link rel="icon" href="{{ url_for('static', filename='logo.png') }}" type="image/png">
-<title>HirePilot — seu copiloto inteligente de vagas</title>
+<title>HirePilot — vagas em um só lugar</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v={{ app_version }}">
 </head>
-<body>
-<div class="bg-orbs" aria-hidden="true"><span class="orb orb-1"></span><span class="orb orb-2"></span><span class="orb orb-3"></span></div>
-<header>
-  <div class="brand">
-    <img class="brand-wordmark brand-wordmark--dark" src="{{ url_for('static', filename='logo-wordmark.png') }}" alt="HirePilot" height="38">
-    <img class="brand-wordmark brand-wordmark--light" src="{{ url_for('static', filename='logo-wordmark-light.png') }}" alt="HirePilot" height="38">
-    <span class="sub" id="headerSub">Ache emprego perto de você</span>
+<body class="hp-app li-ui">
+
+<input type="file" id="file" accept=".pdf,.docx,.doc" class="hidden" onchange="upload()">
+
+<!-- HEADER estilo LinkedIn -->
+<header class="hp-header">
+  <a class="hp-logo" href="#" onclick="return false" aria-label="HirePilot">
+    <img class="hp-logo-img hp-logo-img--dark" src="{{ url_for('static', filename='logo-wordmark.png') }}" alt="HirePilot" height="34">
+    <img class="hp-logo-img hp-logo-img--light" src="{{ url_for('static', filename='logo-wordmark-light.png') }}" alt="HirePilot" height="34">
+  </a>
+
+  <div class="hp-search-wrap hidden" id="headerSearchWrap">
+    <svg class="hp-search-ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3-3"/></svg>
+    <input type="search" id="keywords" placeholder="Buscar cargo, skill ou empresa…" enterkeyhint="search" onkeydown="if(event.key==='Enter')search()" oninput="syncKeywordInputs(this)">
   </div>
-  <span class="spacer"></span>
-  <button id="modeBtn" class="btn small ghost" type="button" onclick="toggleSimpleMode()" title="Alternar modo de uso">Modo simples</button>
-  <button id="dashBtn" class="btn small ghost pro-only hidden" onclick="openDashboard()" aria-label="Abrir painel"><span class="bi">📊</span> Painel</button>
-  <button id="themeBtn" class="btn small ghost icon-btn" onclick="toggleTheme()" aria-label="Alternar tema">☀️</button>
-  <button id="resetBtn" class="btn small ghost hidden" onclick="resetProfile()">Trocar currículo</button>
+
+  <nav class="hp-nav hidden" id="topNav" aria-label="Principal">
+    <button type="button" class="hp-nav-btn on" data-nav="search" onclick="switchTab('search')">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15ZM16 16l4.5 4.5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+      <span>Início</span>
+    </button>
+    <button type="button" class="hp-nav-btn" data-nav="results" onclick="switchTab('results')">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 10h8M8 14h5"/></svg>
+      <span>Vagas</span>
+      <span id="resultBadgeHdr" class="hp-nav-badge hidden">0</span>
+    </button>
+    <button type="button" class="hp-nav-btn" data-nav="pipeline" onclick="switchTab('pipeline')">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="5" height="18" rx="1"/><rect x="10" y="3" width="5" height="12" rx="1"/><rect x="17" y="3" width="5" height="8" rx="1"/></svg>
+      <span>Candidaturas</span>
+      <span id="pipelineBadgeHdr" class="hp-nav-badge hidden">0</span>
+    </button>
+    <button type="button" class="hp-nav-btn pro-only" onclick="showFormat()" title="Análise ATS">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg>
+      <span>ATS</span>
+    </button>
+  </nav>
+
+  <div class="hp-header-end">
+    <button type="button" class="hp-icon-btn hidden" id="repeatSearchBtn" onclick="repeatLastSearch()" title="Repetir última busca">
+      <span aria-hidden="true">↻</span>
+    </button>
+    <button type="button" class="hp-icon-btn pro-only hidden" id="apiPresetBtn" onclick="applyApiOnlyPreset()" title="Preset só APIs (sem navegador)">
+      <span aria-hidden="true">⚡</span>
+    </button>
+    <button type="button" class="hp-icon-btn hidden" id="cvHeaderBtn" onclick="promptUpload()" title="Currículo">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+      <span class="hp-icon-lbl">CV</span>
+    </button>
+    <button type="button" class="hp-icon-btn" id="modeBtn" onclick="toggleSimpleMode()" title="Modo simples/completo">
+      <span aria-hidden="true">⚡</span>
+    </button>
+    <button type="button" class="hp-icon-btn pro-only hidden" id="dashBtn" onclick="openDashboard()" title="Painel">📊</button>
+    <button type="button" class="hp-icon-btn hp-theme-btn" id="themeBtn" onclick="toggleTheme()" aria-label="Alternar tema" title="Modo escuro/claro">
+      <svg class="theme-icon theme-icon--moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      <svg class="theme-icon theme-icon--sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+    </button>
+    <button type="button" class="hp-pill-btn hidden" id="resetBtn" onclick="resetProfile()">Sair</button>
+  </div>
 </header>
 
-<div class="container">
-  <!-- ETAPA 1: UPLOAD -->
-  <div id="uploadView" class="upload-box">
-    <span class="badge" id="uploadBadge">✦ EMPREGO MAIS PERTO DE VOCÊ</span>
-    <h2 class="lead" id="uploadLead">Encontre vaga <span class="grad">sem complicação</span></h2>
-    <p class="lead-sub" id="uploadSub">Mande seu currículo em PDF ou Word. A gente busca vagas e mostra quais combinam mais com você.</p>
-    <div class="drop" id="drop" onclick="document.getElementById('file').click()">
-      <div class="icon">📄</div>
-      <h2>Envie seu currículo</h2>
-      <p>Arraste aqui ou clique — PDF ou DOCX.</p>
-      <p style="margin-top:18px"><span class="btn primary lg">Escolher arquivo</span></p>
+<!-- LANDING (só na 1ª visita, some ao entrar) -->
+<div id="uploadView" class="hp-welcome">
+  <div class="hp-welcome-inner">
+    <p class="hp-welcome-kicker" id="uploadBadge">Seu hub de vagas</p>
+    <h1 class="hp-welcome-title" id="uploadLead">Encontre emprego <span>sem pular de site em site</span></h1>
+    <p class="hp-welcome-sub" id="uploadSub">Busque em Gupy, Indeed, Sólides e mais. Envie o currículo quando quiser ver compatibilidade.</p>
+    <div class="hp-welcome-actions">
+      <button type="button" class="hp-btn hp-btn--primary hp-btn--lg" onclick="startGuestSearch()">Começar a buscar</button>
+      <button type="button" class="hp-btn hp-btn--outline hp-btn--lg" onclick="promptUpload()">Enviar currículo</button>
+    </div>
+    <div class="drop hidden" id="drop" onclick="promptUpload()">
       <p class="hint" id="fileName"></p>
     </div>
-    <input type="file" id="file" accept=".pdf,.docx,.doc" class="hidden" onchange="upload()">
-    <div class="features" id="uploadFeatures">
-      <div class="feature"><span class="fi">🔎</span><div><b>Busca em vários sites</b><span>Gupy, Indeed e mais</span></div></div>
-      <div class="feature"><span class="fi">👍</span><div><b>Veja o que combina</b><span>Nota simples em cada vaga</span></div></div>
-      <div class="feature"><span class="fi">✅</span><div><b>Você escolhe</b><span>A gente só organiza</span></div></div>
-    </div>
-  </div>
-
-  <!-- ETAPA 2: APP -->
-  <div id="appView" class="hidden">
-    <div class="app-shell">
-      <aside class="sidebar">
-        <div class="sb-brand">
-          <img src="{{ url_for('static', filename='logo.png') }}" alt="" class="sb-icon">
-        </div>
-        <nav class="sb-nav">
-          <button type="button" class="sb-item pro-only" onclick="openDashboard()"><span class="sb-ic">📊</span> Painel</button>
-          <button type="button" class="sb-item on" data-sb="search" onclick="switchTab('search')"><span class="sb-ic">🔎</span> Buscar vagas</button>
-          <button type="button" class="sb-item" data-sb="results" onclick="switchTab('results')"><span class="sb-ic">📋</span> Vagas <span id="resultBadgeSb" class="rbadge hidden">0</span></button>
-          <button type="button" class="sb-item pro-only" onclick="showFormat()"><span class="sb-ic">📈</span> Análise ATS</button>
-          <button type="button" class="sb-item" onclick="resetProfile()"><span class="sb-ic">📄</span> Currículo</button>
-        </nav>
-      </aside>
-
-      <div class="app-main">
-        <div class="greet">
-          <h2>Olá, <span id="pName">—</span>!</h2>
-          <p class="muted" id="pInfo">—</p>
-        </div>
-
-        <div class="stat-cards">
-          <div class="stat-card">
-            <span class="sc-label" id="statCompatLabel">Combina com você</span>
-            <span class="sc-val" id="statCompat">--</span>
-          </div>
-          <div class="stat-card pro-only">
-            <span class="sc-label">Análise ATS</span>
-            <span class="sc-val" id="statAts">--</span>
-          </div>
-          <div class="stat-card">
-            <span class="sc-label">Vagas encontradas</span>
-            <span class="sc-val plain" id="statJobs">0</span>
-          </div>
-        </div>
-
-        <div class="profilebar-compact">
-          <div class="field-label" id="seniorityLabel">Experiência</div>
-          <select id="seniority" onchange="saveSeniority()" style="width:auto;padding:7px 10px">
-            <option value="">Não informado</option>
-            <option value="estagiário">Estagiário</option>
-            <option value="júnior">Júnior</option>
-            <option value="pleno">Pleno</option>
-            <option value="sênior">Sênior</option>
-          </select>
-          <span class="muted pro-only" style="font-size:12px;margin-left:auto"><a href="#" class="link" onclick="showFormat();return false;">Detalhes do ATS →</a></span>
-        </div>
-
-        <nav class="app-nav" role="tablist">
-          <button type="button" class="tab on" id="tabSearch" onclick="switchTab('search')" role="tab" aria-selected="true">🔎 Buscar</button>
-          <button type="button" class="tab" id="tabResults" onclick="switchTab('results')" role="tab" aria-selected="false">📋 Resultados <span id="resultBadge" class="rbadge hidden">0</span></button>
-        </nav>
-
-        <div id="searchTab" class="tab-pane on">
-          <div class="panel">
-            <div class="label-row panel-head">
-              <label style="margin:0">Filtros <span id="filterCount" class="fcount hidden">0</span></label>
-              <span class="link" onclick="clearFilters()">limpar</span>
-            </div>
-
-            <details class="fblock" open>
-              <summary id="searchBlockTitle">O que você quer trabalhar?</summary>
-              <label for="sector" id="sectorLabel">Área</label>
-              <select id="sector" onchange="onSectorChange()">
-                <option value="">Selecione…</option>
-                <optgroup label="Emprego do dia a dia" id="ogQuick">
-                  <option value="emprego_geral" selected>Qualquer área — vagas em geral</option>
-                  <option value="varejo">Loja / varejo / caixa</option>
-                  <option value="atendimento">Atendimento / telefone</option>
-                  <option value="administrativo">Escritório / administrativo</option>
-                  <option value="servicos">Serviços gerais / manutenção</option>
-                  <option value="operacional">Fábrica / produção / estoque</option>
-                  <option value="limpeza">Limpeza / conservação</option>
-                  <option value="motorista">Motorista / entregas</option>
-                  <option value="cozinha">Cozinha / restaurante</option>
-                  <option value="primeiro_emprego">Primeiro emprego / aprendiz</option>
-                </optgroup>
-                <optgroup label="Tecnologia" class="pro-only">
-                  <option value="tec_all">Tecnologia — todas as áreas</option>
-                  <option value="tec_dev">Desenvolvimento</option>
-                  <option value="tec_suporte">Suporte / TI</option>
-                  <option value="tec_dados">Dados / BI</option>
-                  <option value="tec_devops">DevOps / Infra</option>
-                  <option value="tec_qa">QA / Testes</option>
-                  <option value="tec_seguranca">Segurança</option>
-                </optgroup>
-                <optgroup label="Produto & Design" class="pro-only">
-                  <option value="produto">Produto</option>
-                  <option value="design">Design / UX</option>
-                </optgroup>
-                <optgroup label="Negócios" class="pro-only">
-                  <option value="marketing">Marketing</option>
-                  <option value="vendas">Vendas / Comercial</option>
-                  <option value="atendimento">Atendimento ao cliente</option>
-                  <option value="rh">Recursos Humanos (RH)</option>
-                  <option value="financeiro">Financeiro</option>
-                  <option value="fiscal">Fiscal</option>
-                  <option value="contabil">Contábil</option>
-                  <option value="administrativo">Administrativo</option>
-                  <option value="juridico">Jurídico</option>
-                  <option value="logistica">Logística / Supply Chain</option>
-                </optgroup>
-                <optgroup label="Outros" class="pro-only">
-                  <option value="engenharia">Engenharia</option>
-                  <option value="saude">Saúde</option>
-                  <option value="educacao">Educação</option>
-                  <option value="outro">Outro (usar palavras-chave)</option>
-                </optgroup>
-              </select>
-              <label for="keywords" id="keywordsLabel">Cargo ou palavra (opcional)</label>
-              <input type="text" id="keywords" placeholder="ex: vendedor, auxiliar, motorista">
-              <label for="locationScope" id="locationBlockTitle">Onde você quer trabalhar?</label>
-              <select id="locationScope" onchange="onLocationScopeChange()">
-                <option value="city" selected>Na minha cidade</option>
-                <option value="state">No meu estado (qualquer cidade)</option>
-                <option value="br">Em todo o Brasil</option>
-                <option value="remote">Só remoto / home office</option>
-                <option value="foreign">No exterior</option>
-              </select>
-              <div id="locationCityBlock" class="location-block">
-                <div class="location-fields">
-                  <input type="text" id="locationCity" placeholder="Ex: Manhuaçu" autocomplete="off" list="cityDatalist" oninput="onLocationFieldsChange()">
-                  <select id="locationState" aria-label="Estado (UF)" onchange="onLocationStateChange()">
-                    <option value="">UF</option>
-                    <option value="AC">AC</option><option value="AL">AL</option><option value="AP">AP</option>
-                    <option value="AM">AM</option><option value="BA">BA</option><option value="CE">CE</option>
-                    <option value="DF">DF</option><option value="ES">ES</option><option value="GO">GO</option>
-                    <option value="MA">MA</option><option value="MT">MT</option><option value="MS">MS</option>
-                    <option value="MG">MG</option><option value="PA">PA</option><option value="PB">PB</option>
-                    <option value="PR">PR</option><option value="PE">PE</option><option value="PI">PI</option>
-                    <option value="RJ">RJ</option><option value="RN">RN</option><option value="RS">RS</option>
-                    <option value="RO">RO</option><option value="RR">RR</option><option value="SC">SC</option>
-                    <option value="SP">SP</option><option value="SE">SE</option><option value="TO">TO</option>
-                  </select>
-                </div>
-                <datalist id="cityDatalist"></datalist>
-                <label class="chip location-remote-opt" id="locationRemoteWrap">
-                  <input type="checkbox" id="locationIncludeRemote" onchange="saveFilters()"> Incluir vagas remotas também
-                </label>
-              </div>
-              <p class="hint" id="locationHint">Informe sua cidade e estado — buscamos vagas aí perto.</p>
-              <input type="hidden" id="location" value="">
-              <div class="pro-only">
-              <label>Salário mínimo (R$/mês, opcional)</label>
-              <input type="number" id="salary_min" placeholder="ex: 5000" min="0" step="500">
-              <label>Salário máximo (R$/mês, opcional)</label>
-              <input type="number" id="salary_max" placeholder="ex: 15000" min="0" step="500">
-              </div>
-            </details>
-
-            <details class="fblock pro-only">
-              <summary>Refinar (opcional)</summary>
-              <label>Modelo de trabalho</label>
-              <div class="chips" id="workplace">
-                <label class="chip"><input type="checkbox" value="remoto"> Remoto</label>
-                <label class="chip"><input type="checkbox" value="hibrido"> Híbrido</label>
-                <label class="chip"><input type="checkbox" value="presencial"> Presencial</label>
-              </div>
-              <p class="hint" style="margin-top:4px">Nenhum marcado = todos os modelos</p>
-              <label>Tipo de vaga</label>
-              <div class="chips" id="job_type">
-                <label class="chip"><input type="checkbox" value="efetivo"> Efetivo</label>
-                <label class="chip"><input type="checkbox" value="estagio"> Estágio</label>
-                <label class="chip"><input type="checkbox" value="pj"> PJ</label>
-                <label class="chip"><input type="checkbox" value="temporario"> Temporário</label>
-              </div>
-              <label>Nível</label>
-              <div class="chips" id="experience">
-                <label class="chip"><input type="checkbox" value="estagio"> Estágio</label>
-                <label class="chip"><input type="checkbox" value="junior"> Júnior</label>
-                <label class="chip"><input type="checkbox" value="pleno"> Pleno</label>
-                <label class="chip"><input type="checkbox" value="senior"> Sênior</label>
-              </div>
-              <label>Publicadas em</label>
-              <select id="date_posted">
-                <option value="qualquer">Qualquer data</option>
-                <option value="24h">Últimas 24h</option>
-                <option value="semana">Última semana</option>
-                <option value="mes">Último mês</option>
-              </select>
-            </details>
-
-            <details class="fblock" open id="sourcesBlock">
-              <summary id="sourcesBlockTitle">Onde buscar</summary>
-              <div class="label-row pro-only">
-                <label>Fontes</label>
-                <span class="link" onclick="toggleAllSources()">selecionar todas</span>
-              </div>
-              <div class="chips" id="sources">
-                <label class="chip"><input type="checkbox" value="gupy" checked> Gupy</label>
-                <label class="chip"><input type="checkbox" value="indeed" checked> Indeed</label>
-                <label class="chip pro-only"><input type="checkbox" value="greenhouse"> Greenhouse</label>
-                <label class="chip pro-only"><input type="checkbox" value="remotive" checked> Remotive</label>
-                <label class="chip pro-only"><input type="checkbox" value="remoteok" checked> RemoteOK</label>
-                <label class="chip"><input type="checkbox" value="infojobs"> InfoJobs</label>
-                <label class="chip pro-only warn"><input type="checkbox" value="linkedin"> LinkedIn *</label>
-              </div>
-              <p class="hint pro-only">* InfoJobs e LinkedIn abrem navegador (podem pedir login)</p>
-              <div class="pro-only">
-              <label>Máx. por fonte</label>
-              <input type="number" id="limit" value="40" min="5" max="100">
-              <label>Máx. exibidas no total</label>
-              <input type="number" id="global_cap" value="" min="10" max="1000" placeholder="auto = por fonte × fontes">
-              <p class="hint">Ex.: 50 por fonte × 7 fontes → até 350 vagas. Filtre por fonte na aba Resultados.</p>
-              </div>
-              <input type="hidden" id="limitSimple" value="50">
-              <label class="chip broad-toggle"><input type="checkbox" id="broad" checked> <span id="broadLabel">Buscar o máximo de vagas</span></label>
-              <label class="chip pro-only"><input type="checkbox" id="only_new"> Só vagas novas (desde última busca)</label>
-              <label class="chip pro-only"><input type="checkbox" id="semantic" checked> Match profundo (semântico — mais lento)</label>
-              <label class="chip pro-only"><input type="checkbox" id="no_cache"> Buscar sem cache (dados frescos)</label>
-            </details>
-
-            <div class="search-actions">
-              <button class="go" id="go" onclick="search()">Buscar vagas agora</button>
-            </div>
-
-            <div class="label-row pro-only" style="margin-top:18px">
-              <label style="margin:0">Buscas salvas</label>
-              <span class="link" onclick="saveCurrentSearch()">+ salvar</span>
-            </div>
-            <div class="chips pro-only" id="savedSearches"></div>
-
-            <div class="label-row pro-only" style="margin-top:18px">
-              <label style="margin:0">Alertas de vagas</label>
-              <span class="link" onclick="saveAlert()">+ criar alerta</span>
-            </div>
-            <div class="chips pro-only" id="alertsList"></div>
-            <p class="hint pro-only">Alertas rodam automaticamente a cada 30 min (web e desktop). Use 🔕 para pausar.</p>
-          </div>
-        </div>
-
-        <div id="resultsTab" class="tab-pane">
-          <div id="results">
-            <div class="empty">
-              <div class="big">🔎</div>
-              <span id="resultsEmptyText">Escolha a área na aba <b>Buscar</b> e clique em <b>Buscar vagas agora</b>.</span>
-              <p class="muted" style="margin-top:10px;font-size:13px" id="resultsEmptyHint">Mostramos as vagas que mais combinam com seu currículo.</p>
-            </div>
-          </div>
-        </div>
-      </div>
+    <div class="hp-welcome-grid" id="uploadFeatures">
+      <div class="hp-welcome-card"><strong>Várias fontes</strong><span>Gupy, Catho, Sólides, Indeed…</span></div>
+      <div class="hp-welcome-card"><strong>Match inteligente</strong><span>Score por vaga com CV</span></div>
+      <div class="hp-welcome-card"><strong>100% local</strong><span>Seus dados ficam no PC</span></div>
     </div>
   </div>
 </div>
 
-<dialog id="modal">
-  <div class="dh">
-    <span id="modalTitle">Detalhes</span>
-    <button class="x" onclick="document.getElementById('modal').close()">&times;</button>
+<!-- APP PRINCIPAL -->
+<div id="appView" class="hidden">
+  <div class="hp-shell">
+    <!-- Coluna esquerda: perfil + currículo -->
+    <aside class="hp-col hp-col--left">
+      <div class="hp-card hp-profile">
+        <div class="hp-profile-cover"></div>
+        <div class="hp-profile-body">
+          <div class="hp-avatar" id="idAvatar">?</div>
+          <h2 class="hp-profile-name" id="pName">Visitante</h2>
+          <p class="hp-profile-sub" id="pInfo">Busca livre ativa</p>
+
+          <div class="hp-cv" id="cvSlot">
+            <button type="button" class="hp-cv-add" id="cvAddBtn" onclick="promptUpload()">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+              <span><b>Adicionar currículo</b><small>PDF ou Word · ativa match e ATS</small></span>
+            </button>
+            <div class="hp-cv-done hidden" id="cvAdded">
+              <div class="hp-cv-done-top">
+                <span class="hp-cv-check">✓</span>
+                <div><b>Currículo ativo</b><small id="cvFileHint">—</small></div>
+              </div>
+              <div class="hp-cv-links">
+                <button type="button" onclick="promptUpload()">Trocar</button>
+                <button type="button" class="pro-only" onclick="showFormat()">Ver ATS</button>
+                <button type="button" class="danger" onclick="confirmRemoveProfile()">Remover</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="hp-metrics">
+            <div class="hp-metric">
+              <span class="hp-metric-val" id="statCompat">—</span>
+              <span class="hp-metric-lbl" id="statCompatLabel">Match</span>
+            </div>
+            <div class="hp-metric pro-only">
+              <span class="hp-metric-val" id="statAts">—</span>
+              <span class="hp-metric-lbl">ATS</span>
+            </div>
+            <div class="hp-metric">
+              <span class="hp-metric-val hp-metric-val--plain" id="statJobs">0</span>
+              <span class="hp-metric-lbl">Vagas</span>
+            </div>
+          </div>
+
+          <div class="hp-field" id="profileBar">
+            <label for="seniority" id="seniorityLabel">Sua experiência</label>
+            <select id="seniority" onchange="saveSeniority()">
+              <option value="">Não informado</option>
+              <option value="estagiário">Estagiário</option>
+              <option value="júnior">Júnior</option>
+              <option value="pleno">Pleno</option>
+              <option value="sênior">Sênior</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Coluna central: busca + resultados -->
+    <section class="hp-col hp-col--main">
+      <div id="searchTab" class="hp-pane on">
+        <div class="hp-card hp-search-card">
+          <h1 class="hp-search-title">Encontre vagas</h1>
+          <div class="hp-search-row">
+            <div class="hp-search-input-wrap">
+              <label for="keywordsMain" class="sr-only">Palavra-chave</label>
+              <input type="text" id="keywordsMain" placeholder="Ex: PHP, vendedor, auxiliar administrativo…" onkeydown="if(event.key==='Enter')search()">
+            </div>
+            <button type="button" class="hp-btn hp-btn--primary" id="go" onclick="search()">Buscar</button>
+          </div>
+          <div class="hp-search-actions">
+            <button type="button" class="hp-btn hp-btn--ghost" onclick="openFilters()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
+              Filtros <span id="filterCount" class="hp-filter-count hidden">0</span>
+            </button>
+            <button type="button" class="hp-btn hp-btn--ghost" onclick="repeatLastSearch()">Repetir busca</button>
+            <button type="button" class="hp-btn hp-btn--ghost pro-only" onclick="applyApiOnlyPreset()">Só APIs</button>
+            <button type="button" class="hp-btn hp-btn--ghost" onclick="clearFilters()">Limpar filtros</button>
+          </div>
+        </div>
+
+        <div id="jobDetailInline" class="hp-job-inline hidden" aria-live="polite"></div>
+
+        <div id="resultsTab" class="hp-pane on">
+          <div id="results">
+            <div class="hp-empty">
+              <div class="hp-empty-icon">💼</div>
+              <p id="resultsEmptyText">Defina filtros e clique em <b>Buscar</b>.</p>
+              <p class="hp-empty-hint" id="resultsEmptyHint">Adicione seu currículo à esquerda para ver compatibilidade em cada vaga.</p>
+            </div>
+          </div>
+        </div>
+
+        <div id="pipelineTab" class="hp-pane">
+          <div class="hp-card">
+            <div class="hp-pipeline-head">
+              <h1 class="hp-search-title">Minhas candidaturas</h1>
+              <p class="muted">Acompanhe vagas do interesse até a resposta final.</p>
+            </div>
+            <div id="pipelineBoard" class="hp-kanban"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Coluna direita -->
+    <aside class="hp-col hp-col--right">
+      <div class="hp-card hp-side">
+        <div class="hp-side-head">
+          <h3>Fontes</h3>
+          <button type="button" class="hp-link" onclick="refreshSourceHealth(true)">Atualizar</button>
+        </div>
+        <div id="sourceHealth" class="source-health" aria-live="polite">
+          <span class="health-chip loading">Verificando…</span>
+        </div>
+      </div>
+      <div class="hp-card hp-side hp-side--tip">
+        <h3>Dica</h3>
+        <p>Com currículo, cada vaga mostra % de match — como no LinkedIn, mas agregando vários portais de emprego.</p>
+      </div>
+      <div class="privacy-banner hp-card hp-side" id="privacyBanner" role="note">
+        <p><strong>Privado.</strong> Dados ficam só neste computador.</p>
+        <button type="button" class="hp-link" onclick="dismissPrivacyBanner()">Ok</button>
+      </div>
+    </aside>
   </div>
-  <div class="body" id="modalBody"></div>
-  <div class="row" id="modalRow">
-    <span id="modalLeft"></span>
-    <button class="btn primary" onclick="document.getElementById('modal').close()">Fechar</button>
+</div>
+
+<!-- FILTROS (drawer) -->
+<dialog id="filtersModal" class="hp-drawer">
+  <div class="hp-drawer-head">
+    <h2>Filtros de busca</h2>
+    <button type="button" class="hp-drawer-close" onclick="closeFilters()" aria-label="Fechar">&times;</button>
+  </div>
+  <div class="hp-drawer-body">
+    <label for="sector" id="sectorLabel">Área</label>
+    <select id="sector" onchange="onSectorChange()">
+      <option value="">Selecione…</option>
+      <optgroup label="Emprego do dia a dia" id="ogQuick">
+        <option value="emprego_geral" selected>Qualquer área — vagas em geral</option>
+        <option value="varejo">Loja / varejo / caixa</option>
+        <option value="atendimento">Atendimento / telefone</option>
+        <option value="administrativo">Escritório / administrativo</option>
+        <option value="servicos">Serviços gerais / manutenção</option>
+        <option value="operacional">Fábrica / produção / estoque</option>
+        <option value="limpeza">Limpeza / conservação</option>
+        <option value="motorista">Motorista / entregas</option>
+        <option value="cozinha">Cozinha / restaurante</option>
+        <option value="primeiro_emprego">Primeiro emprego / aprendiz</option>
+      </optgroup>
+      <optgroup label="Tecnologia" class="pro-only">
+        <option value="tec_all">Tecnologia — todas</option>
+        <option value="tec_dev">Desenvolvimento</option>
+        <option value="tec_suporte">Suporte / TI</option>
+        <option value="tec_dados">Dados / BI</option>
+        <option value="tec_devops">DevOps / Infra</option>
+        <option value="tec_qa">QA / Testes</option>
+        <option value="tec_seguranca">Segurança</option>
+      </optgroup>
+      <optgroup label="Produto & Design" class="pro-only">
+        <option value="produto">Produto</option>
+        <option value="design">Design / UX</option>
+      </optgroup>
+      <optgroup label="Negócios" class="pro-only">
+        <option value="marketing">Marketing</option>
+        <option value="vendas">Vendas / Comercial</option>
+        <option value="atendimento">Atendimento ao cliente</option>
+        <option value="rh">Recursos Humanos</option>
+        <option value="financeiro">Financeiro</option>
+        <option value="fiscal">Fiscal</option>
+        <option value="contabil">Contábil</option>
+        <option value="administrativo">Administrativo</option>
+        <option value="juridico">Jurídico</option>
+        <option value="logistica">Logística</option>
+      </optgroup>
+      <optgroup label="Outros" class="pro-only">
+        <option value="engenharia">Engenharia</option>
+        <option value="saude">Saúde</option>
+        <option value="educacao">Educação</option>
+        <option value="outro">Outro</option>
+      </optgroup>
+    </select>
+
+    <label id="levelFilterLabel">Nível da vaga</label>
+    <div class="chips" id="experience">
+      <label class="chip"><input type="checkbox" value="estagio"> Estágio</label>
+      <label class="chip"><input type="checkbox" value="junior"> Júnior</label>
+      <label class="chip"><input type="checkbox" value="pleno"> Pleno</label>
+      <label class="chip"><input type="checkbox" value="senior"> Sênior</label>
+    </div>
+    <p class="hint" id="levelFilterHint">Se nada marcado, usamos seu nível do perfil.</p>
+
+    <label for="locationScope" id="locationBlockTitle">Local</label>
+    <select id="locationScope" onchange="onLocationScopeChange()">
+      <option value="city" selected>Na minha cidade</option>
+      <option value="state">No meu estado</option>
+      <option value="br">Todo o Brasil</option>
+      <option value="remote">Só remoto</option>
+      <option value="foreign">Exterior</option>
+    </select>
+    <div id="locationCityBlock" class="location-block">
+      <div class="location-fields">
+        <input type="text" id="locationCity" placeholder="Cidade" autocomplete="off" list="cityDatalist" oninput="onLocationFieldsChange()">
+        <select id="locationState" aria-label="UF" onchange="onLocationStateChange()">
+          <option value="">UF</option>
+          <option value="AC">AC</option><option value="AL">AL</option><option value="AP">AP</option>
+          <option value="AM">AM</option><option value="BA">BA</option><option value="CE">CE</option>
+          <option value="DF">DF</option><option value="ES">ES</option><option value="GO">GO</option>
+          <option value="MA">MA</option><option value="MT">MT</option><option value="MS">MS</option>
+          <option value="MG">MG</option><option value="PA">PA</option><option value="PB">PB</option>
+          <option value="PR">PR</option><option value="PE">PE</option><option value="PI">PI</option>
+          <option value="RJ">RJ</option><option value="RN">RN</option><option value="RS">RS</option>
+          <option value="RO">RO</option><option value="RR">RR</option><option value="SC">SC</option>
+          <option value="SP">SP</option><option value="SE">SE</option><option value="TO">TO</option>
+        </select>
+      </div>
+      <datalist id="cityDatalist"></datalist>
+      <label class="chip location-remote-opt" id="locationRemoteWrap">
+        <input type="checkbox" id="locationIncludeRemote" onchange="saveFilters()"> Incluir remotas
+      </label>
+    </div>
+    <p class="hint" id="locationHint">Informe cidade e estado.</p>
+    <input type="hidden" id="location" value="">
+
+    <div class="pro-only">
+      <label>Salário mín. (R$/mês)</label>
+      <input type="number" id="salary_min" placeholder="5000" min="0" step="500">
+      <label>Salário máx. (R$/mês)</label>
+      <input type="number" id="salary_max" placeholder="15000" min="0" step="500">
+    </div>
+
+    <details class="fblock pro-only" open>
+      <summary>Modelo e tipo</summary>
+      <label>Modelo</label>
+      <div class="chips" id="workplace">
+        <label class="chip"><input type="checkbox" value="remoto"> Remoto</label>
+        <label class="chip"><input type="checkbox" value="hibrido"> Híbrido</label>
+        <label class="chip"><input type="checkbox" value="presencial"> Presencial</label>
+      </div>
+      <label>Tipo</label>
+      <div class="chips" id="job_type">
+        <label class="chip"><input type="checkbox" value="efetivo"> Efetivo</label>
+        <label class="chip"><input type="checkbox" value="estagio"> Estágio</label>
+        <label class="chip"><input type="checkbox" value="pj"> PJ</label>
+        <label class="chip"><input type="checkbox" value="temporario"> Temporário</label>
+      </div>
+      <label>Publicadas em</label>
+      <select id="date_posted">
+        <option value="qualquer">Qualquer data</option>
+        <option value="24h">24h</option>
+        <option value="semana">Semana</option>
+        <option value="mes">Mês</option>
+      </select>
+    </details>
+
+    <details class="fblock" open id="sourcesBlock">
+      <summary id="sourcesBlockTitle">Onde buscar</summary>
+      <div class="sources-toolbar">
+        <button type="button" class="hp-link" onclick="selectAllSources(true)">Marcar todas</button>
+        <span class="muted">·</span>
+        <button type="button" class="hp-link" onclick="selectAllSources(false)">Desmarcar</button>
+      </div>
+      <div class="chips" id="sources">
+        <label class="chip"><input type="checkbox" value="gupy" checked> Gupy</label>
+        <label class="chip"><input type="checkbox" value="indeed" checked> Indeed</label>
+        <label class="chip"><input type="checkbox" value="solides" checked> Sólides</label>
+        <label class="chip"><input type="checkbox" value="trampos" checked> Trampos.co</label>
+        <label class="chip"><input type="checkbox" value="catho" checked> Catho</label>
+        <label class="chip"><input type="checkbox" value="vagascom"> Vagas.com</label>
+        <label class="chip"><input type="checkbox" value="infojobs"> InfoJobs</label>
+        <label class="chip"><input type="checkbox" value="trabalhabrasil"> Trabalha Brasil</label>
+        <label class="chip"><input type="checkbox" value="empregoscom" checked> Empregos.com.br</label>
+        <label class="chip pro-only"><input type="checkbox" value="jooble"> Jooble *</label>
+        <label class="chip pro-only"><input type="checkbox" value="careerjet"> CareerJet *</label>
+        <p class="hint jooble-hint pro-only">* <b>Jooble</b> agrega Catho, Vagas.com e outros — cadastro grátis em <a href="https://jooble.org/api/about" target="_blank" rel="noopener">jooble.org/api/about</a> · <code>JOOBLE_API_KEY</code></p>
+        <p class="hint pro-only">* <b>CareerJet</b> — cadastro em careerjet.com.br/partners · <code>CAREERJET_API_KEY</code></p>
+        <label class="chip pro-only"><input type="checkbox" value="greenhouse"> Greenhouse</label>
+        <label class="chip pro-only"><input type="checkbox" value="remotive" checked> Remotive</label>
+        <label class="chip pro-only"><input type="checkbox" value="remoteok" checked> RemoteOK</label>
+        <label class="chip pro-only warn"><input type="checkbox" value="linkedin"> LinkedIn *</label>
+      </div>
+      <p class="hint">* Catho, Vagas.com, LinkedIn, InfoJobs e Trabalha Brasil abrem navegador — use o assistente na 1ª busca</p>
+      <div class="pro-only">
+        <label>Máx. por fonte</label>
+        <input type="number" id="limit" value="40" min="5" max="100">
+        <label>Máx. total</label>
+        <input type="number" id="global_cap" value="" min="10" max="1000" placeholder="auto">
+      </div>
+      <input type="hidden" id="limitSimple" value="50">
+      <label class="chip broad-toggle"><input type="checkbox" id="broad" checked> <span id="broadLabel">Buscar o máximo</span></label>
+      <label class="chip pro-only"><input type="checkbox" id="only_new"> Só vagas novas</label>
+      <label class="chip pro-only"><input type="checkbox" id="semantic" checked> Match semântico</label>
+      <label class="chip pro-only"><input type="checkbox" id="no_cache"> Sem cache</label>
+    </details>
+
+    <div class="pro-only">
+      <div class="label-row"><label>Buscas salvas</label><span class="link" onclick="saveCurrentSearch()">+ salvar</span></div>
+      <div class="chips" id="savedSearches"></div>
+      <div class="label-row"><label>Alertas</label><span class="link" onclick="saveAlert()">+ criar</span></div>
+      <div class="chips" id="alertsList"></div>
+    </div>
+  </div>
+  <div class="hp-drawer-foot">
+    <button type="button" class="hp-btn hp-btn--ghost" onclick="closeFilters()">Cancelar</button>
+    <button type="button" class="hp-btn hp-btn--primary" onclick="applyFiltersAndSearch()">Buscar vagas</button>
   </div>
 </dialog>
 
+<dialog id="modal">
+  <div class="dh"><span id="modalTitle">Detalhes</span><button class="x" onclick="document.getElementById('modal').close()">&times;</button></div>
+  <div class="body" id="modalBody"></div>
+  <div class="row" id="modalRow"><span id="modalLeft"></span><button class="btn primary" onclick="document.getElementById('modal').close()">Fechar</button></div>
+</dialog>
+
 <dialog id="alertModal" class="alert-modal">
-  <div class="dh">
-    <span>Novo alerta</span>
-    <button class="x" type="button" onclick="document.getElementById('alertModal').close()">&times;</button>
-  </div>
+  <div class="dh"><span>Novo alerta</span><button class="x" type="button" onclick="document.getElementById('alertModal').close()">&times;</button></div>
   <div class="body">
-    <p class="muted" style="font-size:13px;margin-bottom:10px">Salva os filtros atuais e avisa quando surgirem vagas novas.</p>
-    <label for="alertName">Nome do alerta</label>
-    <input type="text" id="alertName" placeholder="Ex.: PHP remoto júnior" maxlength="80">
+    <p class="muted" style="font-size:13px;margin-bottom:10px">Salva filtros atuais e avisa sobre vagas novas.</p>
+    <label for="alertName">Nome</label>
+    <input type="text" id="alertName" placeholder="Ex.: PHP remoto" maxlength="80">
   </div>
   <div class="row">
     <button class="btn ghost" type="button" onclick="document.getElementById('alertModal').close()">Cancelar</button>
-    <button class="btn primary" type="button" onclick="confirmSaveAlert()">Criar alerta</button>
+    <button class="btn primary" type="button" onclick="confirmSaveAlert()">Criar</button>
   </div>
 </dialog>
 
@@ -327,25 +429,49 @@
   <button class="btn small ghost" onclick="clearCompare()">Limpar</button>
 </div>
 
-<button id="toTop" class="to-top" aria-label="Voltar ao topo" title="Voltar ao topo">↑</button>
-
+<button id="toTop" class="to-top" aria-label="Topo">↑</button>
 <div id="toasts"></div>
 
 <div id="updateBanner" class="update-banner hidden" role="status">
-  <span>Nova versão disponível: <b id="updateVer">—</b></span>
+  <span>Nova versão: <b id="updateVer">—</b></span>
   <a id="updateLink" class="btn small primary" href="#" target="_blank" rel="noopener">Baixar</a>
   <button type="button" class="btn small ghost" onclick="dismissUpdate()">Depois</button>
 </div>
+
+<dialog id="pinModal" class="pin-modal">
+  <div class="dh"><span>Acesso protegido</span></div>
+  <div class="body">
+    <p class="muted">Esta instância exige PIN (<code>WEB_ACCESS_PIN</code> no .env).</p>
+    <label for="pinInput">PIN</label>
+    <input type="password" id="pinInput" maxlength="32" autocomplete="off" enterkeyhint="done" onkeydown="if(event.key==='Enter')submitPin()">
+  </div>
+  <div class="row">
+    <button type="button" class="btn primary" onclick="submitPin()">Entrar</button>
+  </div>
+</dialog>
+
+<dialog id="portalWizardModal" class="portal-wizard">
+  <div class="portal-wizard-head">
+    <h2>Conectar portais de vagas</h2>
+    <p class="muted">Alguns sites exigem login no navegador. Faça uma vez — a sessão fica salva no seu PC.</p>
+  </div>
+  <div id="portalWizardSteps" class="portal-wizard-steps"></div>
+  <div class="portal-wizard-foot">
+    <button type="button" class="hp-btn hp-btn--ghost" onclick="refreshPortalWizard()">Verificar status</button>
+    <button type="button" class="hp-btn hp-btn--ghost" onclick="dismissPortalWizard()">Pular por agora</button>
+    <button type="button" class="hp-btn hp-btn--primary" onclick="finishPortalWizard()">Continuar</button>
+  </div>
+</dialog>
 
 <dialog id="onboardModal" class="onboard-modal">
   <div class="onboard-hero">👋</div>
   <h2 id="onboardTitle">Bem-vindo ao HirePilot</h2>
   <ol class="onboard-steps" id="onboardSteps">
-    <li><b>Envie seu currículo</b> — PDF ou Word</li>
-    <li><b>Diga o tipo de vaga</b> — loja, escritório, fábrica…</li>
-    <li><b>Busque e candidate-se</b> — veja o que combina com você</li>
+    <li><b>Busque vagas</b> em vários portais de uma vez</li>
+    <li><b>Envie seu currículo</b> para ver match em cada vaga</li>
+    <li><b>Candidature-se</b> onde fizer sentido</li>
   </ol>
-  <button type="button" class="btn primary go" onclick="finishOnboard()">Começar</button>
+  <button type="button" class="btn primary go" onclick="finishOnboard()">Entrar</button>
 </dialog>
 
 <footer class="app-footer" id="appFooter">
@@ -353,6 +479,14 @@
   <span id="appVariant" class="muted"></span>
 </footer>
 
-<script src="{{ url_for('static', filename='app.js') }}"></script>
+<nav class="mobile-nav hidden" id="mobileNav" aria-label="Mobile">
+  <button type="button" class="mob-item on" data-mob="search" onclick="switchTab('search')"><span class="mob-ic">🏠</span><span class="mob-label">Início</span></button>
+  <button type="button" class="mob-item" data-mob="results" onclick="switchTab('results')"><span class="mob-ic">💼</span><span class="mob-label">Vagas</span><span id="resultBadgeMob" class="mob-badge hidden">0</span></button>
+  <button type="button" class="mob-item" data-mob="pipeline" onclick="switchTab('pipeline')"><span class="mob-ic">📋</span><span class="mob-label">Candid.</span></button>
+  <button type="button" class="mob-item" onclick="openFilters()"><span class="mob-ic">⚙️</span><span class="mob-label">Filtros</span></button>
+  <button type="button" class="mob-item" onclick="promptUpload()"><span class="mob-ic">📄</span><span class="mob-label">CV</span></button>
+</nav>
+
+<script src="{{ url_for('static', filename='app.js') }}?v={{ app_version }}"></script>
 </body>
 </html>

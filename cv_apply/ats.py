@@ -12,7 +12,17 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from cv_apply.profile import CandidateProfile, JobPosting
+from cv_apply.relevance import detect_seniority_levels
 from cv_apply.skills_dict import find_skills, text_has_skill
+
+_GENERIC_TITLE_WORDS = {
+    "desenvolvedor", "desenvolvedora", "developer", "dev", "programador",
+    "programadora", "analista", "analyst", "engenheiro", "engenheira",
+    "engineer", "especialista", "specialist", "assistente", "assistant",
+    "tecnico", "technician", "consultor", "consultant", "coordenador",
+    "gerente", "manager", "vaga", "vagas", "de", "da", "do", "para", "em",
+    "jr", "sr", "pl", "pleno", "plena", "junior", "júnior", "senior", "sênior",
+}
 
 
 @dataclass
@@ -31,6 +41,8 @@ class ATSReport:
     keyword_coverage: float = 0.0  # 0-100
     format_checks: list[FormatCheck] = field(default_factory=list)
     format_score: float = 0.0  # 0-100
+    title_alignment: float = 0.0  # 0-100
+    seniority_alignment: float = 0.0  # 0-100
     ats_score: float = 0.0  # 0-100
     suggestions: list[str] = field(default_factory=list)
 
@@ -39,30 +51,154 @@ def _normalize(text: str) -> str:
     return re.sub(r"\s+", " ", (text or "").lower())
 
 
+def _fallback_job_terms(job: JobPosting) -> list[str]:
+    """Termos do título quando o dicionário não encontra skills."""
+    tokens = re.split(r"[\s,/\-|]+", _normalize(job.title))
+    terms: list[str] = []
+    for tok in tokens:
+        tok = tok.strip()
+        if len(tok) < 3 or tok in _GENERIC_TITLE_WORDS:
+            continue
+        terms.append(tok)
+    return list(dict.fromkeys(terms))[:8]
+
+
 def extract_job_keywords(job: JobPosting) -> list[str]:
     """Extrai skills/tecnologias mencionadas na vaga usando o dicionário."""
-    return find_skills(f"{job.title} {job.description}")
+    title_first = find_skills(job.title)
+    body = find_skills(f"{job.description or ''}")
+    merged: list[str] = []
+    seen: set[str] = set()
+    for kw in title_first + body:
+        key = kw.lower()
+        if key not in seen:
+            seen.add(key)
+            merged.append(kw)
+    if not merged:
+        merged = _fallback_job_terms(job)
+    return merged[:25]
+
+
+def _keyword_weights(job: JobPosting, job_keywords: list[str]) -> dict[str, float]:
+    title_norm = _normalize(job.title)
+    desc_norm = _normalize(job.description or "")
+    weights: dict[str, float] = {}
+    for kw in job_keywords:
+        kl = kw.lower()
+        weight = 1.0
+        if kl in title_norm:
+            weight = 2.0
+        elif kl in desc_norm[:900]:
+            weight = 1.35
+        weights[kw] = weight
+    return weights
 
 
 def _keyword_coverage(
     profile: CandidateProfile, job: JobPosting
 ) -> tuple[list[str], list[str], list[str], float]:
     job_keywords = extract_job_keywords(job)
+    if not job_keywords:
+        return [], [], [], 0.0
+
     profile_skills = {s.lower() for s in profile.skills}
     profile_text = _normalize(profile.raw_text)
+    weights = _keyword_weights(job, job_keywords)
 
     present: list[str] = []
     missing: list[str] = []
+    weighted_total = 0.0
+    weighted_present = 0.0
+
     for kw in job_keywords:
+        weight = weights.get(kw, 1.0)
+        weighted_total += weight
         in_skills = kw.lower() in profile_skills
         in_text = text_has_skill(kw, profile_text)
         if in_skills or in_text:
             present.append(kw)
+            weighted_present += weight
         else:
             missing.append(kw)
 
-    coverage = (len(present) / len(job_keywords) * 100) if job_keywords else 100.0
+    coverage = (weighted_present / weighted_total * 100) if weighted_total else 0.0
     return job_keywords, present, missing, round(coverage, 1)
+
+
+def _title_alignment(profile: CandidateProfile, job: JobPosting) -> float:
+    job_words = {
+        w for w in re.split(r"[\s,/\-|]+", _normalize(job.title))
+        if len(w) >= 3 and w not in _GENERIC_TITLE_WORDS
+    }
+    if not job_words:
+        return 50.0
+
+    best = 0.0
+    candidates = list(profile.job_titles)
+    if profile.headline:
+        candidates.append(profile.headline)
+    for title in candidates:
+        words = {
+            w for w in re.split(r"[\s,/\-|]+", _normalize(title))
+            if len(w) >= 3 and w not in _GENERIC_TITLE_WORDS
+        }
+        if not words:
+            continue
+        overlap = len(words & job_words) / len(job_words)
+        best = max(best, overlap)
+
+    if best == 0.0 and profile.skills:
+        skill_hits = sum(1 for w in job_words if any(text_has_skill(w, s) for s in profile.skills))
+        best = skill_hits / len(job_words) * 0.6
+
+    return round(min(100.0, max(0.0, best * 100)), 1)
+
+
+def _seniority_alignment(profile: CandidateProfile, job: JobPosting) -> float:
+    from cv_apply.relevance import _PROFILE_TO_LEVEL
+
+    if not profile.seniority:
+        return 50.0
+
+    prof_level = _PROFILE_TO_LEVEL.get(profile.seniority.strip().lower())
+    if not prof_level:
+        return 50.0
+
+    job_levels = detect_seniority_levels(job.title)
+    if not job_levels:
+        job_levels = detect_seniority_levels((job.description or "")[:800])
+    if not job_levels:
+        return 50.0
+    if prof_level in job_levels:
+        return 100.0
+
+    junior_wants = prof_level in {"junior", "estagio"}
+    senior_job = bool(job_levels & {"senior", "pleno"})
+    if junior_wants and senior_job:
+        return 15.0
+    if prof_level == "senior" and job_levels & {"junior", "estagio"}:
+        return 35.0
+    return 40.0
+
+
+def _compose_ats_score(
+    coverage: float,
+    format_score: float,
+    title_alignment: float,
+    seniority_alignment: float,
+    *,
+    has_format: bool,
+) -> float:
+    if has_format:
+        score = (
+            coverage * 0.45
+            + format_score * 0.25
+            + title_alignment * 0.15
+            + seniority_alignment * 0.15
+        )
+    else:
+        score = coverage * 0.60 + title_alignment * 0.25 + seniority_alignment * 0.15
+    return round(min(100.0, max(0.0, score)), 1)
 
 
 def analyze_resume_format(resume_path: Path, raw_text: str, profile: CandidateProfile) -> list[FormatCheck]:
@@ -72,7 +208,6 @@ def analyze_resume_format(resume_path: Path, raw_text: str, profile: CandidatePr
     norm = _normalize(text)
     word_count = len(text.split())
 
-    # Contato
     checks.append(FormatCheck(
         "Email presente",
         bool(profile.email),
@@ -84,7 +219,6 @@ def analyze_resume_format(resume_path: Path, raw_text: str, profile: CandidatePr
         profile.phone or "Não encontrado",
     ))
 
-    # Seções essenciais
     section_groups = {
         "Experiência": ["experiência", "experiencia", "experience", "profissional", "atuação"],
         "Formação/Educação": ["formação", "formacao", "educação", "educacao", "education", "acadêmica", "academica", "escolaridade"],
@@ -98,7 +232,6 @@ def analyze_resume_format(resume_path: Path, raw_text: str, profile: CandidatePr
             "Encontrada" if present else "Não encontrada — adicione um título de seção claro",
         ))
 
-    # Tamanho
     good_length = 150 <= word_count <= 1500
     checks.append(FormatCheck(
         "Tamanho adequado",
@@ -107,7 +240,6 @@ def analyze_resume_format(resume_path: Path, raw_text: str, profile: CandidatePr
         + ("" if good_length else " — ideal entre 150 e 1500"),
     ))
 
-    # Texto extraível (se quase não há texto, provável currículo em imagem)
     enough_text = word_count >= 80
     checks.append(FormatCheck(
         "Texto extraível",
@@ -115,7 +247,6 @@ def analyze_resume_format(resume_path: Path, raw_text: str, profile: CandidatePr
         "OK" if enough_text else "Pouco texto — currículo pode estar como imagem (ruim p/ ATS)",
     ))
 
-    # Imagens no PDF (logos/fotos podem atrapalhar ATS)
     if resume_path.suffix.lower() == ".pdf":
         image_count = _count_pdf_images(resume_path)
         checks.append(FormatCheck(
@@ -146,6 +277,8 @@ def analyze_ats(
     resume_path: Path | None = None,
 ) -> ATSReport:
     job_keywords, present, missing, coverage = _keyword_coverage(profile, job)
+    title_alignment = _title_alignment(profile, job)
+    seniority_alignment = _seniority_alignment(profile, job)
 
     format_checks: list[FormatCheck] = []
     if resume_path and resume_path.exists():
@@ -157,13 +290,17 @@ def analyze_ats(
     else:
         format_score = 0.0
 
-    # ATS score: 65% palavras-chave + 35% formato (se houver checagem)
-    if format_checks:
-        ats_score = round(coverage * 0.65 + format_score * 0.35, 1)
-    else:
-        ats_score = coverage
+    ats_score = _compose_ats_score(
+        coverage,
+        format_score,
+        title_alignment,
+        seniority_alignment,
+        has_format=bool(format_checks),
+    )
 
-    suggestions = _build_suggestions(missing, format_checks, coverage)
+    suggestions = _build_suggestions(
+        missing, format_checks, coverage, title_alignment, seniority_alignment,
+    )
 
     return ATSReport(
         job=job,
@@ -173,13 +310,31 @@ def analyze_ats(
         keyword_coverage=coverage,
         format_checks=format_checks,
         format_score=format_score,
+        title_alignment=title_alignment,
+        seniority_alignment=seniority_alignment,
         ats_score=ats_score,
         suggestions=suggestions,
     )
 
 
+def analyze_job_requirements(job: JobPosting) -> dict:
+    """Resumo da vaga (sem currículo) — útil no modo visitante."""
+    keywords = extract_job_keywords(job)
+    levels = detect_seniority_levels(job.title) or detect_seniority_levels((job.description or "")[:800])
+    level_label = ", ".join(sorted(levels)) if levels else None
+    return {
+        "job_keywords": keywords,
+        "seniority": level_label,
+        "needs_resume": True,
+    }
+
+
 def _build_suggestions(
-    missing: list[str], format_checks: list[FormatCheck], coverage: float
+    missing: list[str],
+    format_checks: list[FormatCheck],
+    coverage: float,
+    title_alignment: float,
+    seniority_alignment: float,
 ) -> list[str]:
     suggestions: list[str] = []
 
@@ -190,9 +345,18 @@ def _build_suggestions(
         )
     if coverage >= 80:
         suggestions.append("Boa cobertura de palavras-chave para esta vaga.")
-    elif coverage < 50:
+    elif coverage < 50 and missing:
         suggestions.append(
             "Cobertura baixa: adapte o currículo destacando as skills que a vaga pede."
+        )
+
+    if title_alignment < 45:
+        suggestions.append(
+            "O cargo atual do currículo parece distante do título da vaga — ajuste o headline ou o resumo."
+        )
+    if seniority_alignment < 40:
+        suggestions.append(
+            "O nível de senioridade da vaga pode não combinar com o seu perfil."
         )
 
     for check in format_checks:
