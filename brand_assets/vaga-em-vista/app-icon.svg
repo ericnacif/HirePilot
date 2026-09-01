@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">Ícone Vaga em Vista</title>
+  <desc id="desc">Símbolo da marca sobre fundo azul profundo arredondado.</desc>
+  <rect x="32" y="32" width="960" height="960" rx="220" fill="#101828"/>
+  <g transform="translate(205 205) scale(1.2)">
+    <path fill="#F7F8F3" d="M56 104h124l76 156-62 132L56 104Z"/>
+    <path fill="#F7F8F3" d="M456 104H332l-76 156 62 132 138-288Z"/>
+    <path fill="#B7F34A" d="M256 244 172 408h168L256 244Z"/>
+    <circle cx="256" cy="204" r="28" fill="#B7F34A"/>
+  </g>
+</svg>

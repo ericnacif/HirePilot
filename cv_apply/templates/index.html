@@ -3,20 +3,20 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#F6F8FC">
-<link rel="icon" href="{{ url_for('static', filename='logo.png') }}" type="image/png">
-<title>HirePilot — seu copiloto inteligente de vagas</title>
+<meta name="theme-color" content="#101828">
+<link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
+<title>Vaga em Vista — sua próxima oportunidade, em vista</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@500;600&family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
 <div class="bg-orbs" aria-hidden="true"><span class="orb orb-1"></span><span class="orb orb-2"></span><span class="orb orb-3"></span></div>
 <header>
   <div class="brand">
-    <img class="brand-wordmark brand-wordmark--dark" src="{{ url_for('static', filename='logo-wordmark.png') }}" alt="HirePilot" height="38">
-    <img class="brand-wordmark brand-wordmark--light" src="{{ url_for('static', filename='logo-wordmark-light.png') }}" alt="HirePilot" height="38">
+    <img class="brand-wordmark brand-wordmark--dark" src="{{ url_for('static', filename='logo-stacked-reverse.svg') }}" alt="Vaga em Vista" height="54">
+    <img class="brand-wordmark brand-wordmark--light" src="{{ url_for('static', filename='logo-stacked.svg') }}" alt="Vaga em Vista" height="54">
     <span class="sub" id="headerSub">Ache emprego perto de você</span>
   </div>
   <span class="spacer"></span>
@@ -339,7 +339,7 @@
 
 <dialog id="onboardModal" class="onboard-modal">
   <div class="onboard-hero">👋</div>
-  <h2 id="onboardTitle">Bem-vindo ao HirePilot</h2>
+  <h2 id="onboardTitle">Bem-vindo ao Vaga em Vista</h2>
   <ol class="onboard-steps" id="onboardSteps">
     <li><b>Envie seu currículo</b> — PDF ou Word</li>
     <li><b>Diga o tipo de vaga</b> — loja, escritório, fábrica…</li>
@@ -349,7 +349,7 @@
 </dialog>
 
 <footer class="app-footer" id="appFooter">
-  <span>HirePilot <span id="appVersion">v—</span></span>
+  <span>Vaga em Vista <span id="appVersion">v—</span></span>
   <span id="appVariant" class="muted"></span>
 </footer>
 

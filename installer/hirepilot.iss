@@ -1,10 +1,10 @@
-; Inno Setup — instalador Windows do HirePilot (Edição Leve)
+; Inno Setup — instalador Windows do Vaga em Vista (Edição Leve)
 
-#define MyAppName "HirePilot"
+#define MyAppName "Vaga em Vista"
 #define MyAppVersion "1.1.5"
-#define MyAppPublisher "HirePilot"
+#define MyAppPublisher "Vaga em Vista"
 #define MyAppURL "https://github.com/ericnacif/HirePilot"
-#define MyAppExeName "HirePilot.exe"
+#define MyAppExeName "Vaga em Vista.exe"
 
 [Setup]
 AppId={{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
@@ -18,7 +18,7 @@ DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
 OutputDir=dist
-OutputBaseFilename=HirePilot-Setup
+OutputBaseFilename=Vaga-em-Vista-Setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern

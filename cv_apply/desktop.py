@@ -1,4 +1,4 @@
-"""App desktop do HirePilot — janela nativa, sem console nem navegador externo.
+"""App desktop do Vaga em Vista — janela nativa, sem console nem navegador externo.
 
 No Windows usa WebView2 (Edge embutido): duplo clique abre uma janela do app
 com a interface dentro. O servidor Flask roda em segundo plano na mesma
@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_WINDOW_TITLE = "HirePilot"
+_WINDOW_TITLE = "Vaga em Vista"
 _WINDOW_SIZE = (1280, 860)
 _WINDOW_MIN = (960, 640)
 
@@ -43,17 +43,17 @@ def _splash_html() -> str:
 <style>
   *{{box-sizing:border-box;margin:0;padding:0}}
   body{{height:100vh;display:flex;align-items:center;justify-content:center;
-    font-family:Segoe UI,system-ui,sans-serif;background:#F6F8FC;color:#1A2030}}
+    font-family:Inter,Segoe UI,system-ui,sans-serif;background:#101828;color:#F7F8F3}}
   .box{{text-align:center;padding:28px}}
   .wordmark{{height:46px;width:auto;margin:0 auto 18px;display:block;animation:pulse 1.4s ease-in-out infinite}}
-  p{{font-size:13px;color:#64748b;margin-bottom:18px}}
-  .bar{{width:200px;height:5px;border-radius:99px;background:rgba(93,140,255,.15);margin:0 auto;overflow:hidden}}
-  .bar i{{display:block;height:100%;width:40%;background:linear-gradient(90deg,#22D3EE,#5D8CFF,#8B5CF6);
+  p{{font-size:13px;color:#AAB4C5;margin-bottom:18px}}
+  .bar{{width:200px;height:5px;border-radius:99px;background:rgba(183,243,74,.15);margin:0 auto;overflow:hidden}}
+  .bar i{{display:block;height:100%;width:40%;background:#B7F34A;
     animation:slide 1s ease-in-out infinite}}
   @keyframes slide{{0%{{transform:translateX(-100%)}}100%{{transform:translateX(350%)}}}}
   @keyframes pulse{{0%,100%{{transform:scale(1)}}50%{{transform:scale(1.04)}}}}
 </style></head><body><div class="box">
-<img class="wordmark" src="{wordmark}" alt="HirePilot">
+<img class="wordmark" src="{wordmark}" alt="Vaga em Vista">
 <p id="msg">Iniciando…</p><div class="bar"><i></i></div></div></body></html>"""
 
 
@@ -224,7 +224,7 @@ def _run_browser_fallback(url: str) -> None:
     webbrowser.open(url)
     _message_box(
         _WINDOW_TITLE,
-        "O HirePilot está rodando no navegador.\n\nClique em OK para encerrar o app.",
+        "O Vaga em Vista está rodando no navegador.\n\nClique em OK para encerrar o app.",
         error=False,
     )
 
@@ -237,7 +237,7 @@ def _start_alert_scheduler(settings) -> None:
         total = sum(h["new_count"] for h in hits)
         _message_box(
             _WINDOW_TITLE,
-            f"Alertas HirePilot: {total} vaga(s) nova(s) encontrada(s).\n\n"
+            f"Alertas Vaga em Vista: {total} vaga(s) nova(s) encontrada(s).\n\n"
             "Abra o app para ver os detalhes.",
             error=False,
         )
@@ -246,7 +246,7 @@ def _start_alert_scheduler(settings) -> None:
 
 
 def run_launch() -> None:
-    """Inicia o HirePilot como app desktop."""
+    """Inicia o Vaga em Vista como app desktop."""
     _ensure_desktop_defaults()
     logging.basicConfig(level=logging.WARNING)
 
@@ -269,7 +269,7 @@ def run_launch() -> None:
             _WINDOW_TITLE,
             "Não foi possível iniciar o servidor.\n\n"
             f"{exc}\n\n"
-            "Feche outras instâncias do HirePilot e tente de novo.",
+            "Feche outras instâncias do Vaga em Vista e tente de novo.",
         )
         raise SystemExit(1) from exc
 

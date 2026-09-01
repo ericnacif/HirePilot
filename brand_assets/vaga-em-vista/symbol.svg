@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Símbolo Vaga em Vista</title>
+  <desc id="desc">Um V aberto forma um campo de visão em direção a um ponto no horizonte.</desc>
+  <path fill="#101828" d="M56 104h124l76 156-62 132L56 104Z"/>
+  <path fill="#101828" d="M456 104H332l-76 156 62 132 138-288Z"/>
+  <path fill="#B7F34A" d="M256 244 172 408h168L256 244Z"/>
+  <circle cx="256" cy="204" r="28" fill="#B7F34A"/>
+</svg>

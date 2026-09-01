@@ -1408,7 +1408,7 @@ function openDashboard() {
         + ' <button class="btn small ghost" onclick="removeApplied(\'' + a.id + "')\">Remover</button></div></div>";
     }).join("") + "</div>";
   }
-  openModal("Dashboard HirePilot", html);
+  openModal("Dashboard Vaga em Vista", html);
 }
 
 function statCard(icon, value, label) {

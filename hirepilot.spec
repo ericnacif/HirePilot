@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-# HirePilot Leve — build_exe.bat / release workflow
+# Vaga em Vista Leve — build_exe.bat / release workflow
 
 import sys
 from pathlib import Path
@@ -38,7 +38,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name="HirePilot",
+    name="Vaga em Vista",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

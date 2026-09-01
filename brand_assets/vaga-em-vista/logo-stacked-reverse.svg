@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 900" role="img" aria-labelledby="title desc">
+  <title id="title">Vaga em Vista — versão reversa</title>
+  <desc id="desc">Assinatura vertical clara da marca Vaga em Vista.</desc>
+  <g transform="translate(295 20) scale(.8)">
+    <path fill="#F7F8F3" d="M56 104h124l76 156-62 132L56 104Z"/>
+    <path fill="#F7F8F3" d="M456 104H332l-76 156 62 132 138-288Z"/>
+    <path fill="#B7F34A" d="M256 244 172 408h168L256 244Z"/>
+    <circle cx="256" cy="204" r="28" fill="#B7F34A"/>
+  </g>
+  <text x="500" y="590" text-anchor="middle" fill="#F7F8F3" font-family="Manrope, Inter, Arial, sans-serif" font-size="170" font-weight="800" letter-spacing="-7">VAGA</text>
+  <text x="500" y="755" text-anchor="middle" fill="#F7F8F3" font-family="Manrope, Inter, Arial, sans-serif" font-size="170" font-weight="800" letter-spacing="-7">EM VISTA</text>
+</svg>

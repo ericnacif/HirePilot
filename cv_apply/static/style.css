@@ -1,23 +1,23 @@
 /* ============================================================
-   HirePilot — design system
+   Vaga em Vista — design system
    ============================================================ */
 :root {
-  --hp-surface: #F6F8FC;
-  --hp-blue: #5D8CFF;
-  --hp-blue-d: #4A7AEE;
-  --hp-blue-light: #8FB0FF;
-  --hp-ink: #1A2030;
-  --hp-gray: #64748b;
-  --hp-navy: #12151C;
+  --hp-surface: #F7F8F3;
+  --hp-blue: #B7F34A;
+  --hp-blue-d: #9ED62E;
+  --hp-blue-light: #D2FF82;
+  --hp-ink: #101828;
+  --hp-gray: #667085;
+  --hp-navy: #101828;
 
-  --bg: #12151C;
-  --bg2: #1A1F2A;
-  --card: rgba(26, 31, 42, .88);
-  --card-solid: #1A1F2A;
-  --card2: #242A38;
+  --bg: #101828;
+  --bg2: #162033;
+  --card: rgba(22, 32, 51, .9);
+  --card-solid: #162033;
+  --card2: #202C42;
   --txt: var(--hp-surface);
-  --muted: #9AA8C0;
-  --faint: #6B7A94;
+  --muted: #AAB4C5;
+  --faint: #7F8CA3;
   --accent: var(--hp-blue);
   --accent-d: var(--hp-blue-d);
   --accent2: var(--hp-blue);
@@ -25,17 +25,17 @@
   --border: rgba(246, 248, 252, .08);
   --border-strong: rgba(246, 248, 252, .14);
   --warn: #f59e0b;
-  --danger: #ef4444;
+  --danger: #FF6B5E;
   --radius: 16px;
   --radius-sm: 10px;
   --shadow: 0 18px 50px -12px rgba(0, 0, 0, .55);
   --shadow-sm: 0 6px 18px -6px rgba(0, 0, 0, .45);
   --grad: linear-gradient(135deg, var(--hp-blue), var(--hp-blue-light));
-  --grad-brand: linear-gradient(135deg, #22D3EE 0%, #5D8CFF 48%, #8B5CF6 100%);
-  --grad-soft: linear-gradient(135deg, rgba(93, 140, 255, .18), rgba(93, 140, 255, .06));
+  --grad-brand: linear-gradient(135deg, #B7F34A 0%, #D2FF82 100%);
+  --grad-soft: linear-gradient(135deg, rgba(183, 243, 74, .18), rgba(183, 243, 74, .06));
   --ring-track: rgba(246, 248, 252, .1);
-  --accent-rgb: 93, 140, 255;
-  --font-display: "Plus Jakarta Sans", system-ui, sans-serif;
+  --accent-rgb: 183, 243, 74;
+  --font-display: "Manrope", system-ui, sans-serif;
 }
 
 [data-theme="light"] {
@@ -55,8 +55,8 @@
   --border-strong: rgba(26, 32, 48, .14);
   --warn: #b9791a;
   --danger: #d23b3b;
-  --shadow: 0 20px 48px -16px rgba(93, 140, 255, .22);
-  --shadow-sm: 0 8px 20px -10px rgba(93, 140, 255, .16);
+  --shadow: 0 20px 48px -16px rgba(16, 24, 40, .18);
+  --shadow-sm: 0 8px 20px -10px rgba(16, 24, 40, .14);
   --ring-track: rgba(26, 32, 48, .08);
 }
 
@@ -67,7 +67,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--txt);
-  font-family: "Plus Jakarta Sans", "Inter", system-ui, sans-serif;
+  font-family: "Inter", system-ui, sans-serif;
   font-feature-settings: "cv02", "cv03", "cv04", "ss01";
   line-height: 1.5;
   min-height: 100vh;
@@ -83,8 +83,8 @@ a { color: inherit; }
 /* Background orbs */
 .bg-orbs { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
 .orb { position: absolute; border-radius: 50%; filter: blur(90px); opacity: .38; }
-.orb-1 { width: 520px; height: 520px; top: -160px; right: -80px; background: radial-gradient(circle, #5D8CFF, transparent 70%); }
-.orb-2 { width: 460px; height: 460px; bottom: -180px; left: -120px; background: radial-gradient(circle, #8FB0FF, transparent 70%); opacity: .24; }
+.orb-1 { width: 520px; height: 520px; top: -160px; right: -80px; background: radial-gradient(circle, #B7F34A, transparent 70%); }
+.orb-2 { width: 460px; height: 460px; bottom: -180px; left: -120px; background: radial-gradient(circle, #163C32, transparent 70%); opacity: .3; }
 .orb-3 { width: 380px; height: 380px; top: 30%; left: 45%; background: radial-gradient(circle, #F6F8FC, transparent 70%); opacity: .12; }
 [data-theme="light"] .orb { opacity: .28; }
 [data-theme="light"] .orb-2 { opacity: .22; }
@@ -100,7 +100,7 @@ header {
   display: flex; align-items: center; gap: 14px;
 }
 .brand { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
-.brand-wordmark { height: 38px; width: auto; display: block; }
+.brand-wordmark { height: 54px; width: auto; display: block; }
 .brand-wordmark--light { display: none; }
 [data-theme="light"] .brand-wordmark--light { display: block; }
 [data-theme="light"] .brand-wordmark--dark { display: none; }
@@ -122,7 +122,7 @@ header .spacer { flex: 1; }
 .btn:hover { border-color: var(--accent); transform: translateY(-1px); box-shadow: var(--shadow-sm); }
 .btn:active { transform: translateY(0); }
 .btn.primary {
-  background: var(--grad); border: none; color: #fff;
+  background: var(--grad); border: none; color: #101828;
   box-shadow: 0 10px 24px -8px rgba(var(--accent-rgb), .45);
 }
 .btn.primary:hover { filter: brightness(1.05); box-shadow: 0 14px 30px -8px rgba(var(--accent-rgb), .58); }
@@ -521,7 +521,7 @@ dialog .row { padding: 14px 22px; border-top: 1px solid var(--border); display: 
 *::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
 *::-webkit-scrollbar-thumb:hover { background: var(--muted); background-clip: padding-box; }
 
-/* HirePilot — app shell (sidebar + dashboard cards) */
+/* Vaga em Vista — app shell (sidebar + dashboard cards) */
 .app-shell { display: grid; grid-template-columns: 220px 1fr; gap: 24px; align-items: start; }
 .sidebar {
   position: sticky; top: 76px;

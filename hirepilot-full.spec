@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-# HirePilot Completo — Playwright (LinkedIn/InfoJobs)
+# Vaga em Vista Completo — Playwright (LinkedIn/InfoJobs)
 
 import sys
 from pathlib import Path
@@ -38,7 +38,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name="HirePilot-Full",
+    name="Vaga em Vista-Full",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

@@ -62,6 +62,8 @@ meu_cv.*
 # --- Fontes brutas de logo (processadas ficam em cv_apply/static/) ---
 brand_assets/*
 !brand_assets/.gitkeep
+!brand_assets/vaga-em-vista/
+!brand_assets/vaga-em-vista/**
 
 # --- Cursor / agentes / IDE ---
 .cursor/
