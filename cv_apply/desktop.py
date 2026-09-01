@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
+import secrets
 import socket
 import sys
 import threading
@@ -63,6 +64,8 @@ def _is_full_variant() -> bool:
 
 def _ensure_desktop_defaults() -> None:
     os.environ.setdefault("USE_SEMANTIC_MATCHING", "false")
+    os.environ.setdefault("WEB_ALLOWED_HOSTS", "127.0.0.1,localhost")
+    os.environ.setdefault("DESKTOP_AUTH_TOKEN", secrets.token_urlsafe(32))
     if _is_full_variant():
         os.environ.setdefault(
             "SEARCH_SOURCES",
@@ -137,7 +140,7 @@ def _pick_port(start: int = 59000, end: int = 59100) -> int:
                 return port
             except OSError:
                 continue
-    return start
+    raise OSError(f"Nenhuma porta local disponível entre {start} e {end - 1}.")
 
 
 def _message_box(title: str, text: str, *, error: bool = True) -> None:
@@ -177,6 +180,19 @@ def _start_flask(host: str, port: int) -> tuple[BaseWSGIServer, threading.Thread
     return server, thread
 
 
+class _DesktopApi:
+    """Ponte mínima: abre links externos somente no navegador do sistema."""
+
+    @staticmethod
+    def open_external(url: str) -> bool:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(url)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            return False
+        return bool(webbrowser.open(url))
+
+
 def _run_native_window(url: str) -> None:
     import webview
 
@@ -188,6 +204,7 @@ def _run_native_window(url: str) -> None:
         resizable=True,
         min_size=_WINDOW_MIN,
         text_select=True,
+        js_api=_DesktopApi(),
     )
 
     def _open_app() -> None:
@@ -198,7 +215,26 @@ def _run_native_window(url: str) -> None:
         except Exception:
             pass
 
-    backends: tuple[str | None, ...] = ("edgechromium", "mshtml") if sys.platform.startswith("win") else (None,)
+    def _lock_navigation() -> None:
+        script = """
+        document.addEventListener('click', function (event) {
+          const link = event.target.closest('a[href]');
+          if (!link) return;
+          const target = new URL(link.href, window.location.href);
+          if (target.origin !== window.location.origin) {
+            event.preventDefault();
+            window.pywebview.api.open_external(target.href);
+          }
+        }, true);
+        """
+        try:
+            window.evaluate_js(script)
+        except Exception as exc:
+            logger.warning("Não foi possível ativar proteção de navegação: %s", exc)
+
+    window.events.loaded += _lock_navigation
+
+    backends: tuple[str | None, ...] = ("edgechromium",) if sys.platform.startswith("win") else (None,)
     last_exc: Exception | None = None
     for gui in backends:
         try:
@@ -260,7 +296,9 @@ def run_launch() -> None:
 
     host = "127.0.0.1"
     port = _pick_port()
-    url = f"http://{host}:{port}"
+    token = os.environ["DESKTOP_AUTH_TOKEN"]
+    base_url = f"http://{host}:{port}"
+    url = f"{base_url}/?desktop_token={token}"
 
     try:
         server, _thread = _start_flask(host, port)
@@ -273,7 +311,7 @@ def run_launch() -> None:
         )
         raise SystemExit(1) from exc
 
-    if not _wait_for_server(url):
+    if not _wait_for_server(f"{base_url}/healthz"):
         server.shutdown()
         _message_box(
             _WINDOW_TITLE,

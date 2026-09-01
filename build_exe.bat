@@ -10,7 +10,7 @@ echo.
 
 echo  ========================================
 
-echo   HirePilot - gerando executaveis Windows
+echo   Vaga em Vista - gerando executaveis Windows
 
 echo  ========================================
 
@@ -58,7 +58,7 @@ if exist dist rmdir /s /q dist
 
 
 
-echo [4/6] Empacotando Leve (HirePilot.exe)...
+echo [4/6] Empacotando Leve (Vaga em Vista.exe)...
 
 python -m PyInstaller hirepilot.spec --noconfirm
 
@@ -66,7 +66,7 @@ if errorlevel 1 goto :fail
 
 
 
-echo [5/6] Empacotando Completo (HirePilot-Full.exe)...
+echo [5/6] Empacotando Completo (Vaga em Vista-Full.exe)...
 
 python -m PyInstaller hirepilot-full.spec --noconfirm
 
@@ -78,11 +78,11 @@ echo [6/6] ZIP portatil...
 
 mkdir dist\portable 2>nul
 
-copy /y dist\HirePilot.exe dist\portable\ >nul
+copy /y "dist\Vaga em Vista.exe" dist\portable\ >nul
 
 copy /y LEIA-ME.txt dist\portable\ >nul
 
-powershell -Command "Compress-Archive -Path 'dist/portable/*' -DestinationPath 'dist/HirePilot-portable.zip' -Force"
+powershell -Command "Compress-Archive -Path 'dist/portable/*' -DestinationPath 'dist/Vaga-em-Vista-portable.zip' -Force"
 
 
 
@@ -90,11 +90,11 @@ echo.
 
 echo  Pronto:
 
-echo    dist\HirePilot.exe
+echo    dist\Vaga em Vista.exe
 
-echo    dist\HirePilot-Full.exe
+echo    dist\Vaga em Vista-Full.exe
 
-echo    dist\HirePilot-portable.zip
+echo    dist\Vaga-em-Vista-portable.zip
 
 echo.
 
@@ -117,4 +117,3 @@ pause
 exit /b 1
 
 endlocal
-

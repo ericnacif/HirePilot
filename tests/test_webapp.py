@@ -4,6 +4,7 @@ import io
 import sqlite3
 import time
 
+import cv_apply.webapp as webapp
 from cv_apply.profile import CandidateProfile
 from cv_apply.storage import Storage
 from cv_apply.webapp import SessionData, SessionStore, _format_posted, app
@@ -48,6 +49,25 @@ def test_index_serve_html():
     assert b'csrf-token' in resp.data
     assert resp.headers["X-Frame-Options"] == "DENY"
     assert "default-src 'self'" in resp.headers["Content-Security-Policy"]
+
+
+def test_healthcheck_nao_expoe_sessao():
+    client = app.test_client()
+    resp = client.get("/healthz")
+    assert resp.status_code == 200
+    assert resp.data == b"ok"
+    assert "Set-Cookie" not in resp.headers
+
+
+def test_desktop_exige_token_e_remove_token_da_url(monkeypatch):
+    monkeypatch.setattr(webapp, "DESKTOP_AUTH_TOKEN", "segredo-desktop")
+    client = app.test_client()
+
+    assert client.get("/").status_code == 403
+    authorized = client.get("/?desktop_token=segredo-desktop")
+    assert authorized.status_code == 303
+    assert authorized.headers["Location"] == "/"
+    assert client.get("/").status_code == 200
 
 
 def test_search_sem_perfil_retorna_erro():

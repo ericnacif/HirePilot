@@ -28,7 +28,7 @@ from functools import wraps
 from pathlib import Path
 from typing import Any
 
-from flask import Flask, Response, jsonify, render_template, request, session
+from flask import Flask, Response, jsonify, redirect, render_template, request, session
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from cv_apply.ats import analyze_ats, analyze_resume_format
@@ -50,6 +50,8 @@ WEB_PRODUCTION = os.getenv("WEB_PRODUCTION", "false").lower() in {"1", "true", "
 WEB_ALLOWED_HOSTS = [
     host.strip() for host in os.getenv("WEB_ALLOWED_HOSTS", "").split(",") if host.strip()
 ]
+DESKTOP_AUTH_TOKEN = os.getenv("DESKTOP_AUTH_TOKEN", "")
+SESSION_TTL_SECONDS = 2 * 60 * 60  # 2h sem uso → expira
 
 
 def _resource_dir(name: str) -> str:
@@ -81,7 +83,7 @@ app.config.update(
     SESSION_COOKIE_SAMESITE="Lax",
     SESSION_COOKIE_SECURE=WEB_PRODUCTION,
     SESSION_COOKIE_NAME="__Host-vagaemvista" if WEB_PRODUCTION else "vagaemvista_session",
-    PERMANENT_SESSION_LIFETIME=SESSION_TTL_SECONDS if "SESSION_TTL_SECONDS" in globals() else 7200,
+    PERMANENT_SESSION_LIFETIME=SESSION_TTL_SECONDS,
     TRUSTED_HOSTS=WEB_ALLOWED_HOSTS or None,
 )
 if os.getenv("TRUST_PROXY", "false").lower() in {"1", "true", "yes"}:
@@ -89,7 +91,6 @@ if os.getenv("TRUST_PROXY", "false").lower() in {"1", "true", "yes"}:
 
 ALLOWED_EXT = {".pdf", ".docx"}
 VALID_SENIORITY = {"estagiário", "júnior", "pleno", "sênior"}
-SESSION_TTL_SECONDS = 2 * 60 * 60  # 2h sem uso → expira
 UPLOAD_RETENTION_SECONDS = int(os.getenv("UPLOAD_RETENTION_HOURS", "2")) * 60 * 60
 # Rate limit simples: janela deslizante por sessão
 RATE_LIMIT_WINDOW = 60  # segundos
@@ -415,6 +416,18 @@ def _server_error(_err):
 @app.before_request
 def _global_rate_limit():
     """Limita a taxa global de chamadas à API por sessão."""
+    if request.path == "/healthz":
+        return None
+    if DESKTOP_AUTH_TOKEN:
+        supplied = request.args.get("desktop_token", "")
+        if supplied and secrets.compare_digest(supplied, DESKTOP_AUTH_TOKEN):
+            session.clear()
+            session["desktop_authorized"] = True
+            _sid()
+            _csrf_token()
+            return redirect(request.path, code=303)
+        if not session.get("desktop_authorized"):
+            return jsonify({"error": "Acesso local não autorizado."}), 403
     if not request.path.startswith("/api/"):
         return None
     if not _ip_rate_ok(int(os.getenv("IP_RATE_LIMIT_MAX", "120"))):
@@ -468,6 +481,11 @@ def index():
     return render_template("index.html", csrf_token=_csrf_token())
 
 
+@app.route("/healthz")
+def healthz():
+    return Response("ok", mimetype="text/plain")
+
+
 @app.route("/api/upload", methods=["POST"])
 def api_upload():
     sid = _sid()
@@ -496,7 +514,7 @@ def api_upload():
 
     try:
         profile = parse_resume(dest)
-    except Exception as exc:
+    except Exception:
         logger.exception("Falha ao ler currículo")
         _delete_resume_file(dest)
         return jsonify({"error": "Não foi possível ler o currículo enviado."}), 400
@@ -845,50 +863,14 @@ def _port_in_use(host: str, port: int) -> bool:
         return s.connect_ex((host, port)) == 0
 
 
-def _free_port(host: str, port: int) -> bool:
-    """Tenta encerrar o processo que está ocupando ``port`` (Windows/Unix).
-
-    Evita o problema de "código antigo em cache" quando há um servidor anterior
-    rodando na mesma porta. Retorna True se a porta ficou livre.
-    """
-    import subprocess
-    import sys
-
-    pids: set[str] = set()
-    try:
-        if sys.platform.startswith("win"):
-            out = subprocess.run(
-                ["netstat", "-ano"], capture_output=True, text=True, timeout=5
-            ).stdout
-            for line in out.splitlines():
-                parts = line.split()
-                if len(parts) >= 5 and "LISTENING" in line and parts[1].endswith(f":{port}"):
-                    pids.add(parts[-1])
-            for pid in pids:
-                subprocess.run(["taskkill", "/PID", pid, "/F"], capture_output=True, timeout=5)
-        else:
-            out = subprocess.run(
-                ["lsof", "-ti", f"tcp:{port}"], capture_output=True, text=True, timeout=5
-            ).stdout
-            pids = {p for p in out.split() if p}
-            for pid in pids:
-                subprocess.run(["kill", "-9", pid], capture_output=True, timeout=5)
-    except Exception as exc:
-        logger.warning("Não consegui liberar a porta %d automaticamente: %s", port, exc)
-        return False
-
-    if pids:
-        time.sleep(1.0)
-        logger.info("Porta %d liberada (encerrei: %s)", port, ", ".join(pids))
-    return not _port_in_use(host, port)
-
-
 def run_server(
     host: str = "127.0.0.1",
     port: int = 5000,
     open_browser: bool = True,
-    free_port: bool = True,
 ) -> None:
+    if _port_in_use(host, port):
+        raise OSError(f"A porta {port} já está em uso; escolha outra porta.")
+
     settings = get_settings()
     _cleanup_stale_uploads(settings.data_dir / "uploads")
     _warmup_semantic()
@@ -903,9 +885,6 @@ def run_server(
 
     start_alert_scheduler(settings.data_dir, on_hits=_notify_hits)
 
-    if free_port and _port_in_use(host, port):
-        logger.info("Porta %d ocupada — tentando liberar (servidor antigo?)...", port)
-        _free_port(host, port)
     url = f"http://{host}:{port}"
     if open_browser:
         threading.Timer(1.2, lambda: webbrowser.open(url)).start()

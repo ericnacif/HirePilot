@@ -1,10 +1,10 @@
-HirePilot — como usar (Windows)
+Vaga em Vista — como usar (Windows)
 ================================
 
-1. Abra HirePilot.exe (ou use o atalho após instalar com HirePilot-Setup.exe).
+1. Abra Vaga em Vista.exe (ou use o atalho após instalar com Vaga-em-Vista-Setup.exe).
 
-2. Se o Windows avisar sobre app desconhecido:
-   Mais informações → Executar assim mesmo.
+2. Confirme a assinatura digital nas propriedades do arquivo e, se desejar,
+   compare o SHA-256 com SHA256SUMS.txt. Não execute se a assinatura for inválida.
 
 3. Envie seu currículo (PDF ou Word).
 
@@ -13,8 +13,8 @@ HirePilot — como usar (Windows)
 5. Use "Já apliquei" para acompanhar candidaturas.
 
 Edições:
-- HirePilot.exe — Leve (rápido, fontes via API)
-- HirePilot-Full.exe — Completa (LinkedIn/InfoJobs; na 1ª vez baixa o navegador ~150 MB)
+- Vaga em Vista.exe — Leve (rápido, fontes via API)
+- Vaga em Vista-Full.exe — Completa (LinkedIn/InfoJobs; na 1ª vez baixa o navegador ~150 MB)
 
 Dados ficam só no seu PC: %LOCALAPPDATA%\HirePilot\data\
 

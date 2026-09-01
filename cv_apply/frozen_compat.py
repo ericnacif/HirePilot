@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import sys
 
+_instance_mutex = None
+
 
 def apply_frozen_patches() -> None:
     if not getattr(sys, "frozen", False):
@@ -34,11 +36,14 @@ def ensure_single_instance() -> bool:
     if not sys.platform.startswith("win"):
         return True
 
+    global _instance_mutex
+
     import ctypes
 
     kernel32 = ctypes.windll.kernel32
-    mutex = kernel32.CreateMutexW(None, True, "Global\\HirePilot_SingleInstance")
+    mutex = kernel32.CreateMutexW(None, True, "Local\\VagaEmVista_SingleInstance")
     if kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
         kernel32.CloseHandle(mutex)
         return False
+    _instance_mutex = mutex
     return True

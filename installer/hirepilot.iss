@@ -1,7 +1,7 @@
 ; Inno Setup — instalador Windows do Vaga em Vista (Edição Leve)
 
 #define MyAppName "Vaga em Vista"
-#define MyAppVersion "1.1.5"
+#define MyAppVersion "1.2.0"
 #define MyAppPublisher "Vaga em Vista"
 #define MyAppURL "https://github.com/ericnacif/HirePilot"
 #define MyAppExeName "Vaga em Vista.exe"
@@ -23,6 +23,10 @@ Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
 PrivilegesRequired=lowest
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
+CloseApplications=yes
+RestartApplications=no
 SetupIconFile=..\cv_apply\static\icon.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 

@@ -409,7 +409,6 @@ def cmd_web(args: argparse.Namespace) -> int:
             host=args.host,
             port=args.port,
             open_browser=not args.no_open,
-            free_port=not args.keep_port,
         )
     except KeyboardInterrupt:
         console.print("\n[yellow]Servidor encerrado.[/yellow]")
@@ -471,11 +470,6 @@ def build_parser() -> argparse.ArgumentParser:
     p_web.add_argument("--port", type=int, default=5000, help="Porta (padrão 5000)")
     p_web.add_argument("--host", default="127.0.0.1", help="Host (padrão 127.0.0.1)")
     p_web.add_argument("--no-open", action="store_true", help="Não abrir o navegador automaticamente")
-    p_web.add_argument(
-        "--keep-port",
-        action="store_true",
-        help="Não tentar liberar a porta se já estiver em uso (por padrão, encerra o servidor antigo)",
-    )
     p_web.set_defaults(func=cmd_web)
 
     return parser

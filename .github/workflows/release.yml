@@ -49,19 +49,39 @@ jobs:
           pip install -e .
           python scripts/generate_icon.py
 
-      - name: Build HirePilot (Leve)
+      - name: Build Vaga em Vista (Leve)
         run: python -m PyInstaller hirepilot.spec --noconfirm
 
-      - name: Build HirePilot-Full
+      - name: Build Vaga em Vista (Completo)
         run: python -m PyInstaller hirepilot-full.spec --noconfirm
+
+      - name: Sign application executables
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          if (-not $env:WINDOWS_CERTIFICATE_BASE64 -or -not $env:WINDOWS_CERTIFICATE_PASSWORD) {
+            throw "Configure WINDOWS_CERTIFICATE_BASE64 e WINDOWS_CERTIFICATE_PASSWORD antes de gerar uma release."
+          }
+          $certificate = Join-Path $env:RUNNER_TEMP "vaga-em-vista-signing.pfx"
+          [IO.File]::WriteAllBytes($certificate, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_BASE64))
+          $files = @("dist/Vaga em Vista.exe", "dist/Vaga em Vista-Full.exe")
+          foreach ($file in $files) {
+            & signtool.exe sign /fd SHA256 /tr https://timestamp.digicert.com /td SHA256 /f $certificate /p $env:WINDOWS_CERTIFICATE_PASSWORD $file
+            if ($LASTEXITCODE -ne 0) { throw "Falha ao assinar $file" }
+            & signtool.exe verify /pa /all $file
+            if ($LASTEXITCODE -ne 0) { throw "Assinatura inválida em $file" }
+          }
+          Remove-Item $certificate -Force
 
       - name: Prepare portable ZIP
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist/portable | Out-Null
-          Copy-Item dist/HirePilot.exe dist/portable/
+          Copy-Item "dist/Vaga em Vista.exe" dist/portable/
           Copy-Item LEIA-ME.txt dist/portable/
-          Compress-Archive -Path dist/portable/* -DestinationPath dist/HirePilot-portable.zip -Force
+          Compress-Archive -Path dist/portable/* -DestinationPath dist/Vaga-em-Vista-portable.zip -Force
 
       - name: Install Inno Setup
         run: choco install innosetup -y --no-progress
@@ -70,27 +90,58 @@ jobs:
         shell: pwsh
         run: |
           $v = "${{ github.ref_name }}" -replace '^v',''
-          if (-not $v -or $v -eq '${{ github.ref_name }}') { $v = '1.1.4' }
+          if (-not $v -or $v -eq '${{ github.ref_name }}') { $v = '1.2.0' }
           (Get-Content installer/hirepilot.iss) -replace '#define MyAppVersion ".*"', "#define MyAppVersion `"$v`"" | Set-Content installer/hirepilot-built.iss
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" installer/hirepilot-built.iss
+
+      - name: Sign installer
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          $certificate = Join-Path $env:RUNNER_TEMP "vaga-em-vista-signing.pfx"
+          [IO.File]::WriteAllBytes($certificate, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_BASE64))
+          & signtool.exe sign /fd SHA256 /tr https://timestamp.digicert.com /td SHA256 /f $certificate /p $env:WINDOWS_CERTIFICATE_PASSWORD dist/Vaga-em-Vista-Setup.exe
+          if ($LASTEXITCODE -ne 0) { throw "Falha ao assinar o instalador" }
+          & signtool.exe verify /pa /all dist/Vaga-em-Vista-Setup.exe
+          if ($LASTEXITCODE -ne 0) { throw "Assinatura inválida no instalador" }
+          Remove-Item $certificate -Force
+
+      - name: Generate SHA-256 checksums
+        shell: pwsh
+        run: |
+          $files = @(
+            "dist/Vaga em Vista.exe",
+            "dist/Vaga em Vista-Full.exe",
+            "dist/Vaga-em-Vista-portable.zip",
+            "dist/Vaga-em-Vista-Setup.exe"
+          )
+          $lines = foreach ($file in $files) {
+            $hash = (Get-FileHash -Algorithm SHA256 $file).Hash.ToLowerInvariant()
+            "$hash  $([IO.Path]::GetFileName($file))"
+          }
+          $lines | Set-Content -Encoding ascii dist/SHA256SUMS.txt
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: HirePilot-Windows-${{ github.ref_name }}
+          name: Vaga-em-Vista-Windows-${{ github.ref_name }}
           path: |
-            dist/HirePilot.exe
-            dist/HirePilot-Full.exe
-            dist/HirePilot-portable.zip
-            dist/HirePilot-Setup.exe
+            dist/Vaga em Vista.exe
+            dist/Vaga em Vista-Full.exe
+            dist/Vaga-em-Vista-portable.zip
+            dist/Vaga-em-Vista-Setup.exe
+            dist/SHA256SUMS.txt
 
       - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/HirePilot.exe
-            dist/HirePilot-Full.exe
-            dist/HirePilot-portable.zip
-            dist/HirePilot-Setup.exe
+            dist/Vaga em Vista.exe
+            dist/Vaga em Vista-Full.exe
+            dist/Vaga-em-Vista-portable.zip
+            dist/Vaga-em-Vista-Setup.exe
+            dist/SHA256SUMS.txt
           body_path: INSTALAR.md

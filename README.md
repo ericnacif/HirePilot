@@ -90,7 +90,7 @@ docker run -p 5000:5000 -v hirepilot-data:/app/data hirepilot
 
 ### App desktop — executável Windows (.exe)
 
-Para quem **não tem Python** instalado: um único `HirePilot.exe` que abre **uma janela
+Para quem **não tem Python** instalado: um único `Vaga em Vista.exe` que abre **uma janela
 nativa do app** (sem terminal preto e sem abrir o Chrome separado).
 
 **Gerar o executável** (só quem desenvolve, uma vez):
@@ -99,12 +99,12 @@ nativa do app** (sem terminal preto e sem abrir o Chrome separado).
 build_exe.bat
 ```
 
-O arquivo sai em `dist\HirePilot.exe`.
+O arquivo sai em `dist\Vaga em Vista.exe`.
 
 **Usar o executável:**
 
-1. Duplo clique em `HirePilot.exe`
-2. Abre a janela do HirePilot com a interface dentro
+1. Duplo clique em `Vaga em Vista.exe`
+2. Abre a janela do Vaga em Vista com a interface dentro
 3. Feche a janela para encerrar
 
 **O que vem no .exe (versão leve):**
@@ -130,10 +130,10 @@ git push origin v1.1.4
 Repositório: https://github.com/ericnacif/HirePilot
 
 2. Na página **Releases**, envie ao amigo:
-   - **`HirePilot-Setup.exe`** — instalador (melhor opção)
-   - ou **`HirePilot-portable.zip`** — versão portátil
+   - **`Vaga-em-Vista-Setup.exe`** — instalador (melhor opção)
+   - ou **`Vaga-em-Vista-portable.zip`** — versão portátil
 
-Arquivos no release: Leve (`HirePilot.exe`), Completa (`HirePilot-Full.exe`), instalador e ZIP.  
+Arquivos no release: Leve (`Vaga em Vista.exe`), Completa (`Vaga em Vista-Full.exe`), instalador e ZIP.
 Instruções para leigos: [INSTALAR.md](INSTALAR.md). Histórico: [CHANGELOG.md](CHANGELOG.md).
 
 **Testar o modo app sem gerar o .exe:**
@@ -238,8 +238,8 @@ e estado vazio inteligente; tema claro/escuro, paginação e ordenação dos res
 buscas salvas, exportação (CSV/JSON) e reconhecimento de **sinônimos de skills**
 (ex.: `js`→`javascript`, `k8s`→`kubernetes`).
 
-> Ao rodar `hirepilot web`, se a porta 5000 já estiver ocupada por um servidor
-> anterior, ela é liberada automaticamente (use `--keep-port` para desativar).
+> Se a porta 5000 já estiver ocupada, escolha outra sem encerrar o processo existente:
+> `hirepilot web --port 5001`.
 
 Não precisa configurar nada antes — o currículo é enviado pela própria interface.
 
