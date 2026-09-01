@@ -297,6 +297,21 @@ function lsSet(key, val) {
   try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {}
 }
 
+const CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]')?.content || "";
+const nativeFetch = window.fetch.bind(window);
+window.fetch = function secureFetch(resource, options) {
+  const opts = { ...(options || {}) };
+  const method = String(opts.method || "GET").toUpperCase();
+  const url = typeof resource === "string" ? resource : resource.url;
+  const sameOrigin = new URL(url, window.location.href).origin === window.location.origin;
+  if (sameOrigin && !["GET", "HEAD", "OPTIONS"].includes(method)) {
+    const headers = new Headers(opts.headers || {});
+    headers.set("X-CSRF-Token", CSRF_TOKEN);
+    opts.headers = headers;
+  }
+  return nativeFetch(resource, opts);
+};
+
 /* Favoritos e candidaturas guardam os detalhes da vaga (não só o id),
    para alimentar o painel/histórico mesmo após nova busca. */
 function _toMap(raw) {
@@ -482,7 +497,7 @@ async function loadServerState() {
 
 async function checkAlertHits() {
   try {
-    const d = await fetch("/api/alerts/hits").then(r => r.json());
+    const d = await fetch("/api/alerts/hits", { method: "POST" }).then(r => r.json());
     (d.hits || []).forEach(h => {
       toast("Alerta «" + h.name + "»: " + h.new_count + " vaga(s) nova(s)", "success");
     });

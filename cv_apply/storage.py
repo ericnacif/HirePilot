@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import base64
 import csv
+import hashlib
 import json
+import os
 import sqlite3
 from datetime import date, datetime
 from pathlib import Path
@@ -15,9 +18,17 @@ class Storage:
     def __init__(self, data_dir: Path):
         self.data_dir = data_dir
         self.data_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            self.data_dir.chmod(0o700)
+        except OSError:
+            pass
         self.db_path = data_dir / "cv_apply.db"
         self.profile_path = data_dir / "profile.json"
         self._init_db()
+        try:
+            self.db_path.chmod(0o600)
+        except OSError:
+            pass
 
     def _init_db(self) -> None:
         with sqlite3.connect(self.db_path) as conn:
@@ -107,13 +118,21 @@ class Storage:
         return CandidateProfile.model_validate(data)
 
     def save_web_profile(self, sid: str, profile: CandidateProfile) -> None:
+        payload = profile.model_dump_json()
+        secret = os.getenv("CV_APPLY_SECRET", "")
+        if secret:
+            from cryptography.fernet import Fernet
+
+            digest = hashlib.sha256(("vaga-em-vista:web-profile:" + secret).encode()).digest()
+            key = base64.urlsafe_b64encode(digest)
+            payload = "fernet:" + Fernet(key).encrypt(payload.encode()).decode()
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(
                 """
                 INSERT OR REPLACE INTO web_profiles (sid, profile_json, updated_at)
                 VALUES (?, ?, ?)
                 """,
-                (sid, profile.model_dump_json(), datetime.now().isoformat()),
+                (sid, payload, datetime.now().isoformat()),
             )
 
     def load_web_profile(self, sid: str) -> CandidateProfile | None:
@@ -123,7 +142,20 @@ class Storage:
             ).fetchone()
         if not row:
             return None
-        return CandidateProfile.model_validate(json.loads(row[0]))
+        payload = row[0]
+        if payload.startswith("fernet:"):
+            secret = os.getenv("CV_APPLY_SECRET", "")
+            if not secret:
+                return None
+            from cryptography.fernet import Fernet, InvalidToken
+
+            digest = hashlib.sha256(("vaga-em-vista:web-profile:" + secret).encode()).digest()
+            key = base64.urlsafe_b64encode(digest)
+            try:
+                payload = Fernet(key).decrypt(payload[7:].encode()).decode()
+            except InvalidToken:
+                return None
+        return CandidateProfile.model_validate(json.loads(payload))
 
     def save_jobs(self, jobs: list[JobPosting]) -> None:
         with sqlite3.connect(self.db_path) as conn:

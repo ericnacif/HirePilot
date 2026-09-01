@@ -1,4 +1,4 @@
-# Imagem enxuta para a interface web do HirePilot.
+# Imagem enxuta para a interface web do Vaga em Vista.
 FROM python:3.12-slim
 
 ENV PYTHONUNBUFFERED=1 \
@@ -25,4 +25,6 @@ EXPOSE 5000
 
 # 1 worker para manter o estado de sessão (in-memory) consistente; threads p/ concorrência
 CMD ["gunicorn", "-b", "0.0.0.0:5000", "-w", "1", "--threads", "8", \
-     "--timeout", "180", "cv_apply.webapp:app"]
+     "--timeout", "180", "--limit-request-line", "4094", \
+     "--limit-request-fields", "50", "--limit-request-field_size", "8190", \
+     "cv_apply.webapp:app"]

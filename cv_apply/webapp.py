@@ -14,11 +14,13 @@ import json
 import logging
 import os
 import queue
+import secrets
 import sys
 import threading
 import time
 import uuid
 import webbrowser
+import zipfile
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -27,7 +29,7 @@ from pathlib import Path
 from typing import Any
 
 from flask import Flask, Response, jsonify, render_template, request, session
-from werkzeug.utils import secure_filename
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from cv_apply.ats import analyze_ats, analyze_resume_format
 from cv_apply.config import get_settings
@@ -43,6 +45,11 @@ from cv_apply.tailor import tailor_resume_markdown
 logger = logging.getLogger(__name__)
 
 MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "8"))
+MAX_JSON_BYTES = int(os.getenv("MAX_JSON_KB", "64")) * 1024
+WEB_PRODUCTION = os.getenv("WEB_PRODUCTION", "false").lower() in {"1", "true", "yes"}
+WEB_ALLOWED_HOSTS = [
+    host.strip() for host in os.getenv("WEB_ALLOWED_HOSTS", "").split(",") if host.strip()
+]
 
 
 def _resource_dir(name: str) -> str:
@@ -62,19 +69,36 @@ app = Flask(
     template_folder=_resource_dir("templates"),
     static_folder=_resource_dir("static"),
 )
-app.secret_key = os.environ.get("CV_APPLY_SECRET", os.urandom(24).hex())
+_configured_secret = os.environ.get("CV_APPLY_SECRET", "")
+if WEB_PRODUCTION and len(_configured_secret) < 32:
+    raise RuntimeError("CV_APPLY_SECRET deve ter pelo menos 32 caracteres em produção.")
+if WEB_PRODUCTION and not WEB_ALLOWED_HOSTS:
+    raise RuntimeError("WEB_ALLOWED_HOSTS deve listar os hosts públicos em produção.")
+app.secret_key = _configured_secret or os.urandom(32).hex()
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=WEB_PRODUCTION,
+    SESSION_COOKIE_NAME="__Host-vagaemvista" if WEB_PRODUCTION else "vagaemvista_session",
+    PERMANENT_SESSION_LIFETIME=SESSION_TTL_SECONDS if "SESSION_TTL_SECONDS" in globals() else 7200,
+    TRUSTED_HOSTS=WEB_ALLOWED_HOSTS or None,
+)
+if os.getenv("TRUST_PROXY", "false").lower() in {"1", "true", "yes"}:
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
 
-ALLOWED_EXT = {".pdf", ".docx", ".doc"}
+ALLOWED_EXT = {".pdf", ".docx"}
 VALID_SENIORITY = {"estagiário", "júnior", "pleno", "sênior"}
 SESSION_TTL_SECONDS = 2 * 60 * 60  # 2h sem uso → expira
-UPLOAD_RETENTION_SECONDS = int(os.getenv("UPLOAD_RETENTION_HOURS", "24")) * 60 * 60
+UPLOAD_RETENTION_SECONDS = int(os.getenv("UPLOAD_RETENTION_HOURS", "2")) * 60 * 60
 # Rate limit simples: janela deslizante por sessão
 RATE_LIMIT_WINDOW = 60  # segundos
 RATE_LIMIT_MAX = int(os.getenv("RATE_LIMIT_MAX", "30"))  # requisições/janela
 SEARCH_RATE_MAX = int(os.getenv("SEARCH_RATE_MAX", "8"))  # buscas/janela
 MAX_SESSIONS = 200
 _alert_hits: list[dict] = []
+_ip_hits: dict[str, list[float]] = {}
+_ip_hits_lock = threading.Lock()
 
 
 # --------------------------------------------------------------------------- #
@@ -245,6 +269,56 @@ def _sid() -> str:
     return session["sid"]
 
 
+def _csrf_token() -> str:
+    token = session.get("csrf_token")
+    if not token:
+        token = secrets.token_urlsafe(32)
+        session["csrf_token"] = token
+    return token
+
+
+def _request_ip() -> str:
+    """Usa o endereço do socket; proxy só é confiado quando configurado."""
+    if os.getenv("TRUST_PROXY", "false").lower() in {"1", "true", "yes"}:
+        forwarded = request.headers.get("X-Forwarded-For", "").split(",", 1)[0].strip()
+        if forwarded:
+            return forwarded[:64]
+    return (request.remote_addr or "unknown")[:64]
+
+
+def _ip_rate_ok(max_per_window: int = 120, window: int = RATE_LIMIT_WINDOW) -> bool:
+    now = time.time()
+    key = _request_ip()
+    with _ip_hits_lock:
+        recent = [t for t in _ip_hits.get(key, []) if now - t < window]
+        recent.append(now)
+        _ip_hits[key] = recent
+        if len(_ip_hits) > 2000:
+            stale = [ip for ip, hits in _ip_hits.items() if not hits or now - hits[-1] >= window]
+            for ip in stale[:1000]:
+                _ip_hits.pop(ip, None)
+        return len(recent) <= max_per_window
+
+
+def _valid_resume_file(path: Path, ext: str) -> bool:
+    """Valida assinatura e estrutura antes de entregar o arquivo ao parser."""
+    if ext == ".pdf":
+        with path.open("rb") as fh:
+            return fh.read(5) == b"%PDF-"
+    if ext == ".docx":
+        try:
+            with zipfile.ZipFile(path) as archive:
+                names = set(archive.namelist())
+                if not {"[Content_Types].xml", "word/document.xml"}.issubset(names):
+                    return False
+                entries = archive.infolist()
+                total = sum(info.file_size for info in entries)
+                return len(entries) <= 1000 and total <= 50 * 1024 * 1024
+        except (OSError, zipfile.BadZipFile):
+            return False
+    return False
+
+
 def _format_posted(value: str | None) -> str | None:
     """Converte data de publicação em rótulo amigável (ex.: 'há 4 dias')."""
     if not value:
@@ -343,10 +417,46 @@ def _global_rate_limit():
     """Limita a taxa global de chamadas à API por sessão."""
     if not request.path.startswith("/api/"):
         return None
+    if not _ip_rate_ok(int(os.getenv("IP_RATE_LIMIT_MAX", "120"))):
+        return jsonify({"error": "Muitas requisições deste endereço. Aguarde."}), 429
+    if request.method not in {"GET", "HEAD", "OPTIONS"}:
+        fetch_site = request.headers.get("Sec-Fetch-Site", "")
+        if fetch_site == "cross-site":
+            return jsonify({"error": "Origem da requisição não permitida."}), 403
+        provided = request.headers.get("X-CSRF-Token", "")
+        expected = session.get("csrf_token", "")
+        if not expected or not secrets.compare_digest(provided, expected):
+            return jsonify({"error": "Token de segurança inválido. Recarregue a página."}), 403
+        if request.mimetype == "application/json" and (request.content_length or 0) > MAX_JSON_BYTES:
+            return jsonify({"error": "Requisição JSON muito grande."}), 413
     sess = store.get(_sid())
     if not sess.rate_ok("api", RATE_LIMIT_MAX, RATE_LIMIT_WINDOW):
         return jsonify({"error": "Muitas requisições. Aguarde um instante."}), 429
     return None
+
+
+@app.after_request
+def _security_headers(response: Response) -> Response:
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=()"
+    response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+    response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; "
+        "form-action 'self'; img-src 'self' data:; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "script-src 'self' 'unsafe-inline'; "
+        "connect-src 'self' https://api.github.com"
+    )
+    if request.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store, private"
+        response.headers["Pragma"] = "no-cache"
+    if WEB_PRODUCTION:
+        response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
+    return response
 
 
 # --------------------------------------------------------------------------- #
@@ -355,7 +465,7 @@ def _global_rate_limit():
 @app.route("/")
 def index():
     _sid()
-    return render_template("index.html")
+    return render_template("index.html", csrf_token=_csrf_token())
 
 
 @app.route("/api/upload", methods=["POST"])
@@ -363,25 +473,33 @@ def api_upload():
     sid = _sid()
     file = request.files.get("resume")
     if not file or not file.filename:
-        return jsonify({"error": "Nenhum arquivo enviado."})
+        return jsonify({"error": "Nenhum arquivo enviado."}), 400
 
     ext = Path(file.filename).suffix.lower()
     if ext not in ALLOWED_EXT:
-        return jsonify({"error": "Formato inválido. Envie PDF ou DOCX."})
+        return jsonify({"error": "Formato inválido. Envie PDF ou DOCX."}), 400
 
     settings = get_settings()
     upload_dir = settings.data_dir / "uploads"
     upload_dir.mkdir(parents=True, exist_ok=True)
     _cleanup_stale_uploads(upload_dir)
-    dest = upload_dir / f"{sid}_{secure_filename(file.filename)}"
+    dest = upload_dir / f"{sid}_{uuid.uuid4().hex}{ext}"
     file.save(str(dest))
+    try:
+        dest.chmod(0o600)
+    except OSError:
+        pass
+
+    if not _valid_resume_file(dest, ext):
+        _delete_resume_file(dest)
+        return jsonify({"error": "O conteúdo do arquivo não corresponde a um PDF ou DOCX válido."}), 400
 
     try:
         profile = parse_resume(dest)
     except Exception as exc:
         logger.exception("Falha ao ler currículo")
         _delete_resume_file(dest)
-        return jsonify({"error": f"Não foi possível ler o currículo: {exc}"})
+        return jsonify({"error": "Não foi possível ler o currículo enviado."}), 400
 
     sess = store.get(sid)
     if sess.resume_path and sess.resume_path != dest:
@@ -390,9 +508,6 @@ def api_upload():
     sess.resume_path = dest
     sess.jobs.clear()
     sess.source_by_job.clear()
-    _db().save_profile(profile)
-    _db().save_web_profile(sid, profile)
-
     summary = _profile_summary(profile, dest)
     summary["job_hint"] = profile.job_titles[0] if profile.job_titles else (
         " ".join(profile.skills[:2]) if profile.skills else "desenvolvedor"
@@ -499,6 +614,7 @@ def api_meta():
         "version": __version__,
         "variant": "full" if full else "lite",
         "release_url": "https://github.com/ericnacif/HirePilot/releases/latest",
+        "csrf_token": _csrf_token(),
     })
 
 
@@ -586,6 +702,9 @@ def api_alerts(sess: SessionData):
     filters = data.get("filters")
     if not name or not filters:
         return jsonify({"error": "Nome e filtros são obrigatórios."}), 400
+    # Só persiste o perfil quando a pessoa ativa um recurso que precisa dele
+    # depois da requisição; uploads comuns continuam apenas na memória/sessão.
+    db.save_web_profile(sid, sess.profile)
     aid = db.save_alert(sid, name, filters, data.get("id"))
     return jsonify({"ok": True, "id": aid})
 
@@ -602,10 +721,12 @@ def api_alerts_toggle(sess: SessionData):
     return jsonify({"ok": True})
 
 
-@app.route("/api/alerts/hits", methods=["GET"])
+@app.route("/api/alerts/hits", methods=["POST"])
 def api_alert_hits():
     global _alert_hits
-    hits, _alert_hits = list(_alert_hits), []
+    sid = _sid()
+    hits = [hit for hit in _alert_hits if hit.get("sid") == sid]
+    _alert_hits = [hit for hit in _alert_hits if hit.get("sid") != sid]
     return jsonify({"hits": hits})
 
 
