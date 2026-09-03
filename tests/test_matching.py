@@ -59,6 +59,15 @@ def test_match_job_sem_semantico_gera_score_e_motivos():
     assert "python" in m.skill_overlap
 
 
+def test_match_job_expoe_breakdown_e_skills_faltantes():
+    profile = CandidateProfile(skills=["python"])
+    job = _job(description="Python, Django e Docker")
+    match = match_job(profile, job, use_semantic=False)
+    assert match.breakdown["skills"] > 0
+    assert "docker" in match.missing_skills
+    assert match.fit_label
+
+
 def test_rank_jobs_ordena_decrescente():
     profile = CandidateProfile(skills=["python", "django"])
     jobs = [

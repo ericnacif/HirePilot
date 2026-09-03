@@ -1,8 +1,8 @@
 services:
-  hirepilot:
+  vaga-em-vista:
     build: .
-    image: hirepilot:latest
-    container_name: hirepilot
+    image: vaga-em-vista:latest
+    container_name: vaga-em-vista
     ports:
       - "5000:5000"
     environment:

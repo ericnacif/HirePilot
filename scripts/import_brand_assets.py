@@ -2,7 +2,7 @@
 
 Coloque na pasta brand_assets/ (não versionada):
   - logo-source.png      — ícone sozinho (fundo escuro ok)
-  - wordmark-source.png  — logo com texto HirePilot
+  - wordmark-source.png  — logo com texto Vaga em Vista
 
 Uso: python scripts/import_brand_assets.py
 """

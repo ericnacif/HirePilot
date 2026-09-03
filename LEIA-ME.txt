@@ -16,6 +16,6 @@ Edições:
 - Vaga em Vista.exe — Leve (rápido, fontes via API)
 - Vaga em Vista-Full.exe — Completa (LinkedIn/InfoJobs; na 1ª vez baixa o navegador ~150 MB)
 
-Dados ficam só no seu PC: %LOCALAPPDATA%\HirePilot\data\
+Dados ficam só no seu PC: %LOCALAPPDATA%\Vaga em Vista\data\
 
 Atualizações: https://github.com/ericnacif/HirePilot/releases

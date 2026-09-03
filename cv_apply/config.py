@@ -19,29 +19,30 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 def _legacy_writable_bases() -> list[Path]:
-    """Pastas de dados usadas antes do rebrand para HirePilot."""
+    """Pastas de dados usadas por versões anteriores do aplicativo."""
     home = Path(os.path.expanduser("~"))
     if sys.platform.startswith("win"):
         root = Path(os.getenv("LOCALAPPDATA") or home)
-        return [root / "VagaMatch"]
-    return [home / ".vagamatch"]
+        return [root / "HirePilot", root / "VagaMatch"]
+    return [home / ".hirepilot", home / ".vagamatch"]
 
 
 def _user_writable_base() -> Path:
     """Pasta estável do usuário quando o app roda como executável empacotado."""
     if sys.platform.startswith("win"):
         root = os.getenv("LOCALAPPDATA") or os.path.expanduser("~")
-        return Path(root) / "HirePilot"
-    return Path(os.path.expanduser("~")) / ".hirepilot"
+        return Path(root) / "Vaga em Vista"
+    return Path(os.path.expanduser("~")) / ".vagaemvista"
 
 
 def _migrate_legacy_data(new_base: Path, *, legacy_bases: list[Path] | None = None) -> None:
-    """Move dados de VagaMatch/.vagamatch para HirePilot/.hirepilot (uma vez)."""
+    """Move dados de versões antigas para a pasta atual do Vaga em Vista."""
     marker = new_base / ".migrated_from_legacy"
     if marker.exists():
         return
 
     bases = legacy_bases if legacy_bases is not None else _legacy_writable_bases()
+    migrated_from: list[Path] = []
     for old_base in bases:
         if not old_base.is_dir() or old_base.resolve() == new_base.resolve():
             continue
@@ -53,7 +54,7 @@ def _migrate_legacy_data(new_base: Path, *, legacy_bases: list[Path] | None = No
             continue
 
         new_base.mkdir(parents=True, exist_ok=True)
-        migrated_from = None
+        moved_any = False
         for item in old_base.iterdir():
             dest = new_base / item.name
             if dest.exists():
@@ -61,11 +62,11 @@ def _migrate_legacy_data(new_base: Path, *, legacy_bases: list[Path] | None = No
                 continue
             try:
                 shutil.move(str(item), str(dest))
-                migrated_from = old_base
+                moved_any = True
             except OSError as exc:
                 logger.warning("Não foi possível migrar %s → %s: %s", item, dest, exc)
 
-        if migrated_from is None:
+        if not moved_any:
             continue
 
         try:
@@ -74,9 +75,11 @@ def _migrate_legacy_data(new_base: Path, *, legacy_bases: list[Path] | None = No
         except OSError:
             pass
 
-        marker.write_text(str(migrated_from), encoding="utf-8")
+        migrated_from.append(old_base)
+
+    if migrated_from:
+        marker.write_text("\n".join(str(path) for path in migrated_from), encoding="utf-8")
         logger.info("Dados migrados de %s para %s", migrated_from, new_base)
-        return
 
 
 def _writable_base() -> Path:
@@ -84,7 +87,7 @@ def _writable_base() -> Path:
 
     No executável empacotado (PyInstaller), ``PROJECT_ROOT`` aponta para uma
     pasta temporária somente-leitura; usamos então uma pasta estável do usuário
-    (``%LOCALAPPDATA%\\HirePilot`` no Windows, ``~/.hirepilot`` nos demais).
+    (``%LOCALAPPDATA%\\Vaga em Vista`` no Windows, ``~/.vagaemvista`` nos demais).
     """
     if getattr(sys, "frozen", False):
         new_base = _user_writable_base()

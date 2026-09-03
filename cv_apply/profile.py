@@ -61,3 +61,6 @@ class JobMatch(BaseModel):
     keyword_score: float = 0.0
     seniority_score: float = 0.0
     location_score: float = 0.0
+    missing_skills: list[str] = Field(default_factory=list)
+    breakdown: dict[str, float] = Field(default_factory=dict)
+    fit_label: str = ""

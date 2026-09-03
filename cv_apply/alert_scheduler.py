@@ -37,5 +37,5 @@ def start_alert_scheduler(
             except Exception as exc:
                 logger.debug("Scheduler de alertas: %s", exc)
 
-    threading.Thread(target=_loop, name="hirepilot-alerts", daemon=True).start()
+    threading.Thread(target=_loop, name="vaga-em-vista-alerts", daemon=True).start()
     logger.info("Alertas agendados a cada %d min.", interval_minutes)

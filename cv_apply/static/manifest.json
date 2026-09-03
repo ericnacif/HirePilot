@@ -1,0 +1,14 @@
+{
+  "name": "Vaga em Vista",
+  "short_name": "Vaga em Vista",
+  "description": "Encontre, compare e candidate-se melhor.",
+  "lang": "pt-BR",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#101828",
+  "theme_color": "#101828",
+  "icons": [
+    {"src": "/static/icon.png", "sizes": "192x192", "type": "image/png"},
+    {"src": "/static/icon.png", "sizes": "512x512", "type": "image/png"}
+  ]
+}

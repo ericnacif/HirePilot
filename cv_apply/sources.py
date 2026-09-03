@@ -623,6 +623,19 @@ SOURCE_FUNCS: dict[str, Callable[[Settings, SearchFilters, int], list[JobPosting
 
 AVAILABLE_SOURCES = list(SOURCE_FUNCS.keys())
 
+
+def register_source(
+    name: str,
+    searcher: Callable[[Settings, SearchFilters, int], list[JobPosting]],
+) -> None:
+    """Registra uma fonte adicional sem alterar o pipeline de busca."""
+    key = re.sub(r"[^a-z0-9_-]", "", (name or "").lower())[:40]
+    if not key or not callable(searcher):
+        raise ValueError("Fonte inválida.")
+    SOURCE_FUNCS[key] = searcher
+    if key not in AVAILABLE_SOURCES:
+        AVAILABLE_SOURCES.append(key)
+
 # Fontes que sobem um navegador (Playwright). Não podem rodar em paralelo entre
 # si — a API síncrona do Playwright não é thread-safe e o LinkedIn pede login
 # interativo. Rodam em sequência; as demais (APIs HTTP) rodam em paralelo.

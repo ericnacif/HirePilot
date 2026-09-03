@@ -140,6 +140,13 @@ def _keyword_overlap(profile: CandidateProfile, job: JobPosting) -> tuple[float,
     return min(1.0, ratio), matched
 
 
+def _missing_skills(profile: CandidateProfile, job: JobPosting) -> list[str]:
+    """Skills técnicas detectadas na vaga que não aparecem no perfil."""
+    required = find_skills(f"{job.title} {job.description}")
+    profile_text = " ".join(profile.skills)
+    return [skill for skill in required if not text_has_skill(skill, profile_text)]
+
+
 def _seniority_score(profile: CandidateProfile, job: JobPosting) -> float:
     if not profile.seniority:
         return 0.5
@@ -210,6 +217,7 @@ def match_job(
         semantic = 0.0
 
     keyword_ratio, skill_overlap = _keyword_overlap(profile, job)
+    missing_skills = _missing_skills(profile, job)
     seniority = _seniority_score(profile, job)
     location = _location_score(profile, job)
 
@@ -225,6 +233,12 @@ def match_job(
         raw_score = keyword_ratio * 0.55 + seniority * 0.25 + location * 0.20
 
     score = round(raw_score * 100, 1)
+    fit_label = (
+        "Excelente" if score >= 80 else
+        "Forte" if score >= 65 else
+        "Parcial" if score >= 45 else
+        "Baixa"
+    )
     reasons: list[str] = []
 
     if semantic >= 0.5:
@@ -245,6 +259,9 @@ def match_job(
     if location >= 0.8:
         reasons.append("Localização/remoto compatível")
 
+    if missing_skills:
+        reasons.append(f"A desenvolver: {', '.join(missing_skills[:4])}")
+
     if job.easy_apply:
         reasons.append("Easy Apply disponível")
 
@@ -260,6 +277,14 @@ def match_job(
         keyword_score=round(keyword_ratio * 100, 1),
         seniority_score=round(seniority * 100, 1),
         location_score=round(location * 100, 1),
+        missing_skills=missing_skills[:12],
+        breakdown={
+            "semântico": round(semantic * 100, 1),
+            "skills": round(keyword_ratio * 100, 1),
+            "senioridade": round(seniority * 100, 1),
+            "localização": round(location * 100, 1),
+        },
+        fit_label=fit_label,
     )
 
 

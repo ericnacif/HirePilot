@@ -2,6 +2,16 @@
 
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/).
 
+## [Não lançado]
+
+### Alterado
+- Rebranding do aplicativo para **Vaga em Vista** na interface, documentação,
+  comandos, armazenamento local e assets de distribuição.
+- Dados existentes em `HirePilot`, `.hirepilot`, `VagaMatch` e `.vagamatch`
+  são migrados automaticamente para a nova pasta do aplicativo.
+- Os comandos `hirepilot` e `vagamatch` permanecem disponíveis como aliases de
+  compatibilidade; o comando preferencial passa a ser `vaga-em-vista`.
+
 ## [1.2.0] - 2026-06-16
 
 ### Adicionado

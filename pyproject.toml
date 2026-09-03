@@ -3,7 +3,7 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "hirepilot"
+name = "vaga-em-vista"
 version = "1.2.0"
 description = "Vaga em Vista — busca inteligente de vagas com análise ATS, matching e interface web."
 readme = "README.md"
@@ -41,8 +41,10 @@ dev = [
 Repository = "https://github.com/ericnacif/HirePilot"
 
 [project.scripts]
+vaga-em-vista = "cv_apply.cli:main"
+vagaemvista = "cv_apply.cli:main"
 hirepilot = "cv_apply.cli:main"
-vagamatch = "cv_apply.cli:main"  # alias legado
+vagamatch = "cv_apply.cli:main"  # alias legado anterior
 
 [tool.setuptools.packages.find]
 include = ["cv_apply*"]

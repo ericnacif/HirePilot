@@ -13,8 +13,8 @@ let HIDE_APPLIED = false;
 let SEARCH_ABORT = null;
 let SEARCH_GEN = 0;
 
-const LS_PREFIX = "hirepilot.";
-const LS_LEGACY_PREFIX = "vagamatch.";
+const LS_PREFIX = "vagaemvista.";
+const LS_LEGACY_PREFIXES = ["hirepilot.", "vagamatch."];
 
 function migrateLegacyLocalStorage() {
   if (localStorage.getItem(LS_PREFIX + "migrated")) return;
@@ -23,12 +23,16 @@ function migrateLegacyLocalStorage() {
     "onboarded", "updateDismiss",
   ];
   for (const k of keys) {
-    const oldKey = LS_LEGACY_PREFIX + k;
     const newKey = LS_PREFIX + k;
-    const val = localStorage.getItem(oldKey);
-    if (val === null) continue;
-    if (localStorage.getItem(newKey) === null) localStorage.setItem(newKey, val);
-    localStorage.removeItem(oldKey);
+    if (localStorage.getItem(newKey) !== null) continue;
+    for (const legacyPrefix of LS_LEGACY_PREFIXES) {
+      const oldKey = legacyPrefix + k;
+      const val = localStorage.getItem(oldKey);
+      if (val === null) continue;
+      localStorage.setItem(newKey, val);
+      localStorage.removeItem(oldKey);
+      break;
+    }
   }
   localStorage.setItem(LS_PREFIX + "migrated", "1");
 }
@@ -40,6 +44,10 @@ const APPLIED_KEY = LS_PREFIX + "applied";
 const THEME_KEY = LS_PREFIX + "theme";
 const SAVED_KEY = LS_PREFIX + "savedSearches";
 const SIMPLE_MODE_KEY = LS_PREFIX + "simpleMode";
+const APPLICATION_STATUS = {
+  saved: "Salva", applied: "Candidatei", interview: "Entrevista",
+  offer: "Oferta", rejected: "Recusada", withdrawn: "Desisti",
+};
 
 const SENIORITY_PRO = [
   { value: "", label: "Não informado" },
@@ -328,6 +336,7 @@ function jobMeta(j) {
   return {
     id: j.id, title: j.title, company: j.company, url: j.url,
     score: j.score, ats: j.ats, source: j.source, location: j.location,
+    breakdown: j.breakdown || {}, missing_skills: j.missing_skills || [],
   };
 }
 function saveFav() { lsSet(FAVORITES_KEY, FAVORITES); }
@@ -426,6 +435,9 @@ function firstName(name) {
 
 /* ---------- upload ---------- */
 const drop = $("drop");
+drop.addEventListener("keydown", e => {
+  if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("file").click(); }
+});
 ["dragenter", "dragover"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("drag"); }));
 ["dragleave", "drop"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("drag"); }));
 drop.addEventListener("drop", e => {
@@ -1130,6 +1142,14 @@ function jobCard(j, index) {
   const reasonsHtml = reasons
     ? '<details class="why-job"><summary>' + whyTitle + "</summary><p>" + esc(reasons) + "</p></details>"
     : "";
+  const breakdown = j.breakdown || {};
+  const breakdownHtml = !simple && Object.keys(breakdown).length
+    ? '<details class="why-job match-breakdown"><summary>Como calculamos: ' + esc(j.fit_label || "match") + '</summary>'
+      + '<div class="breakdown-grid">'
+      + Object.entries(breakdown).map(([k, v]) => '<span>' + esc(k) + '</span><b>' + Math.round(v || 0) + '%</b>').join("")
+      + '</div>'
+      + ((j.missing_skills || []).length ? '<p class="missing-skills"><b>Para fortalecer:</b> ' + esc(j.missing_skills.join(", ")) + '</p>' : '')
+      + '</details>' : "";
   const tips = (j.cv_tips || []).slice(0, 2);
   const tipsHtml = simple && tips.length
     ? '<p class="cv-tip"><b>Dica:</b> ' + esc(tips.join(" ")) + "</p>"
@@ -1154,6 +1174,7 @@ function jobCard(j, index) {
     + (pills.length ? '<div class="tags">' + pills.join("") + "</div>" : "")
     + (j.description ? '<div class="desc">' + esc(j.description) + "</div>" : "")
     + reasonsHtml
+    + breakdownHtml
     + tipsHtml
     + (tags && !simple ? '<div class="tags">' + tags + "</div>" : "")
     + '<div class="actions">'
@@ -1252,6 +1273,60 @@ function downloadModalText(name) {
   URL.revokeObjectURL(a.href);
 }
 
+function openImportJob() {
+  ["importUrl", "importTitle", "importCompany", "importLocation", "importDescription"].forEach(id => {
+    const el = $(id); if (el) el.value = "";
+  });
+  $("importModal").showModal();
+}
+
+async function confirmImportJob() {
+  const payload = {
+    url: $("importUrl").value.trim(), title: $("importTitle").value.trim(),
+    company: $("importCompany").value.trim(), location: $("importLocation").value.trim(),
+    description: $("importDescription").value.trim(),
+  };
+  try {
+    const d = await postJSON("/api/job/import", payload);
+    const job = d.job;
+    LAST_JOBS = [job, ...LAST_JOBS.filter(j => j.id !== job.id)];
+    $("importModal").close();
+    switchTab("results"); renderResults(); updateResultBadge();
+    toast("Vaga importada e analisada.", "success");
+  } catch (e) { toast(e.message || "Não foi possível importar a vaga.", "error"); }
+}
+
+async function openDiagnostics() {
+  openModal("Diagnóstico do Vaga em Vista", '<div class="spinner"></div>');
+  try {
+    const d = await fetch("/api/diagnostics").then(r => r.json());
+    const sources = (d.sources || []).map(s => '<div class="check"><span class="' + (s.configured ? "ok" : "no") + '">' + (s.configured ? "✓" : "—") + '</span><span><b>' + esc(s.name) + '</b> — ' + (s.configured ? "ativa" : "disponível, não selecionada") + '</span></div>').join("");
+    $("modalBody").innerHTML = '<p><b>Versão:</b> ' + esc(d.version) + ' · <b>Edição:</b> ' + esc(d.variant) + '</p>'
+      + '<p><b>Dados locais:</b> ' + (d.database?.exists ? "OK" : "ainda não criado") + '</p>'
+      + '<h4>Fontes</h4>' + sources
+      + '<p class="muted" style="margin-top:12px">Nenhum currículo ou candidatura é enviado por este diagnóstico.</p>';
+  } catch (e) { $("modalBody").innerHTML = "Não foi possível carregar o diagnóstico."; }
+}
+
+function exportPrivacyData() { window.location.href = "/api/privacy/export"; }
+
+async function deleteAllData() {
+  if (!window.confirm("Apagar currículo, favoritos, candidaturas, alertas e histórico deste dispositivo?")) return;
+  try {
+    await postJSON("/api/privacy/delete", {});
+    [FILTERS_KEY, FAVORITES_KEY, APPLIED_KEY, SAVED_KEY, ONBOARD_KEY].forEach(k => localStorage.removeItem(k));
+    window.location.reload();
+  } catch (e) { toast("Não foi possível apagar os dados.", "error"); }
+}
+
+async function openResumeVersions() {
+  try {
+    const d = await fetch("/api/resume/versions").then(r => r.json());
+    const html = (d.versions || []).map(v => '<div class="hist-row"><div><b>' + esc(v.filename) + '</b><div class="muted">' + esc(v.name || "Sem nome") + ' · ' + v.skills + ' skills</div></div><span class="muted">' + esc(v.created_at) + '</span></div>').join("") || '<p class="muted">Nenhuma versão registrada.</p>';
+    openModal("Histórico de currículos", html);
+  } catch (e) { openModal("Histórico de currículos", "Não foi possível carregar o histórico."); }
+}
+
 async function atsDetail(id) {
   openModal("Análise ATS", '<div class="spinner"></div>');
   try {
@@ -1296,6 +1371,7 @@ async function markApplied(id, val, skipRender) {
   if (val) {
     const meta = job ? jobMeta(job) : { id };
     meta.applied_at = Date.now();
+    meta.status = meta.status || "applied";
     APPLIED[id] = meta;
   } else {
     delete APPLIED[id];
@@ -1309,6 +1385,13 @@ async function markApplied(id, val, skipRender) {
   } catch (e) {}
 }
 
+async function setApplicationStatus(id, status) {
+  const meta = { ...(APPLIED[id] || { id }) , status };
+  APPLIED[id] = meta; saveApplied();
+  try { await postJSON("/api/applications/status", { id, status }); }
+  catch (e) { toast("Não foi possível atualizar o status.", "error"); }
+}
+
 async function openJobPreview(id) {
   openModal("Detalhes da vaga", '<div class="spinner"></div>');
   try {
@@ -1316,6 +1399,8 @@ async function openJobPreview(id) {
     if (d.error) { $("modalBody").innerHTML = esc(d.error); return; }
     let html = "<h3>" + esc(d.title) + "</h3>";
     html += '<p class="muted">' + esc(d.company) + (d.location ? " · " + esc(d.location) : "") + "</p>";
+    if (d.score != null) html += '<p><b>Compatibilidade:</b> ' + Math.round(d.score) + '% · ' + esc(d.fit_label || "") + '</p>';
+    if ((d.missing_skills || []).length) html += '<p class="muted"><b>Para fortalecer:</b> ' + esc(d.missing_skills.join(", ")) + '</p>';
     if (d.salary) html += '<p><b>Salário:</b> ' + esc(d.salary) + "</p>";
     if (d.posted_at) html += '<p class="muted">' + esc(d.posted_at) + "</p>";
     html += '<div class="job-preview">' + esc(d.description || "Sem descrição disponível.") + "</div>";
@@ -1367,6 +1452,7 @@ function openCompare() {
     ["Score", j => '<span class="score ' + scoreClass(j.score) + '">' + Math.round(j.score) + "</span>"],
     ["ATS", j => Math.round(j.ats || 0) + "%"],
     ["Skills", j => (j.skills || []).map(s => '<span class="tag">' + esc(s) + "</span>").join("") || "—"],
+    ["Faltam", j => (j.missing_skills || []).map(s => '<span class="tag missing">' + esc(s) + "</span>").join("") || "—"],
     ["", j => '<a class="btn small primary" href="' + j.url + '" target="_blank" rel="noopener">Abrir</a>'],
   ];
   let html = '<div class="cmp-table"><table><tbody>';
@@ -1388,6 +1474,8 @@ function openDashboard() {
   const searched = LAST_JOBS.length;
   const favN = favs.length;
   const appliedN = applied.length;
+  const statusCounts = {};
+  applied.forEach(a => { const s = a.status || "applied"; statusCounts[s] = (statusCounts[s] || 0) + 1; });
 
   let html = '<div class="funnel">'
     + '<div class="funnel-step"><b>' + searched + '</b><span>Buscadas</span></div>'
@@ -1409,6 +1497,15 @@ function openDashboard() {
       + srcKeys.map(k => '<span class="tag">' + esc(k) + ": " + bySource[k] + "</span>").join("") + "</div>";
   }
 
+  html += '<h4>Pipeline</h4><div class="tags">'
+    + Object.entries(APPLICATION_STATUS).map(([key, label]) => '<span class="tag">' + label + ': ' + (statusCounts[key] || 0) + '</span>').join("")
+    + '</div>';
+
+  html += '<div class="dashboard-actions"><button class="btn small" onclick="openDiagnostics()">Diagnóstico</button>'
+    + '<button class="btn small" onclick="openResumeVersions()">Histórico de currículos</button>'
+    + '<button class="btn small" onclick="exportPrivacyData()">Exportar meus dados</button>'
+    + '<button class="btn small danger" onclick="deleteAllData()">Apagar meus dados</button></div>';
+
   const sorted = applied.slice().sort((a, b) => (b.applied_at || 0) - (a.applied_at || 0));
   html += "<h4>Histórico de candidaturas</h4>";
   if (!sorted.length) {
@@ -1419,6 +1516,9 @@ function openDashboard() {
       return '<div class="hist-row"><div><b>' + esc(a.title || a.id) + "</b><div class=\"muted\">"
         + esc(a.company || "") + (a.location ? " · " + esc(a.location) : "") + "</div></div>"
         + '<div class="hist-meta"><span class="muted">' + esc(when) + "</span>"
+        + '<select class="status-select" aria-label="Status da candidatura" onchange="setApplicationStatus(\'' + a.id + '\', this.value)">'
+        + Object.entries(APPLICATION_STATUS).map(([key, label]) => '<option value="' + key + '" ' + ((a.status || "applied") === key ? "selected" : "") + '>' + label + '</option>').join("")
+        + '</select>'
         + (a.url ? ' <a class="btn small" href="' + a.url + '" target="_blank" rel="noopener">Abrir</a>' : "")
         + ' <button class="btn small ghost" onclick="removeApplied(\'' + a.id + "')\">Remover</button></div></div>";
     }).join("") + "</div>";
@@ -1434,6 +1534,7 @@ function statCard(icon, value, label) {
 function removeApplied(id) {
   delete APPLIED[id];
   saveApplied();
+  postJSON("/api/state/applied", { id, applied: false }).catch(() => {});
   const job = LAST_JOBS.find(j => j.id === id);
   if (job) job.applied = false;
   openDashboard();
@@ -1581,4 +1682,5 @@ document.addEventListener("DOMContentLoaded", () => {
   onLocationScopeChange();
   loadAppMeta();
   maybeShowOnboard();
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
 });

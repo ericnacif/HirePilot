@@ -51,6 +51,17 @@ def test_index_serve_html():
     assert "default-src 'self'" in resp.headers["Content-Security-Policy"]
 
 
+def test_pwa_shell_e_diagnostico():
+    client = app.test_client()
+    assert client.get("/static/manifest.json").status_code == 200
+    sw = client.get("/sw.js")
+    assert sw.status_code == 200
+    assert sw.headers["Service-Worker-Allowed"] == "/"
+    diagnostic = client.get("/api/diagnostics")
+    assert diagnostic.status_code == 200
+    assert diagnostic.get_json()["ok"] is True
+
+
 def test_healthcheck_nao_expoe_sessao():
     client = app.test_client()
     resp = client.get("/healthz")
@@ -59,15 +70,35 @@ def test_healthcheck_nao_expoe_sessao():
     assert "Set-Cookie" not in resp.headers
 
 
-def test_desktop_exige_token_e_remove_token_da_url(monkeypatch):
+def test_desktop_autentica_por_bootstrap_sem_token_na_url(monkeypatch):
     monkeypatch.setattr(webapp, "DESKTOP_AUTH_TOKEN", "segredo-desktop")
+    monkeypatch.setattr(webapp, "DESKTOP_BOOT_NONCE", "nonce-de-boot")
     client = app.test_client()
 
     assert client.get("/").status_code == 403
-    authorized = client.get("/?desktop_token=segredo-desktop")
-    assert authorized.status_code == 303
-    assert authorized.headers["Location"] == "/"
+    boot = client.get("/desktop-boot/nonce-de-boot")
+    assert boot.status_code == 200
+    assert "segredo-desktop" in boot.get_data(as_text=True)
+    assert "segredo-desktop" not in boot.request.path
+    assert client.get("/desktop-boot/nonce-errado").status_code == 404
+    assert client.get("/?desktop_token=segredo-desktop").status_code == 403
+    authorized = client.post(
+        "/desktop-auth",
+        data="segredo-desktop",
+        content_type="text/plain",
+    )
+    assert authorized.status_code == 200
     assert client.get("/").status_code == 200
+
+
+def test_desktop_rejeita_token_invalido(monkeypatch):
+    monkeypatch.setattr(webapp, "DESKTOP_AUTH_TOKEN", "segredo-desktop")
+    client = app.test_client()
+
+    response = client.post("/desktop-auth", data="nao-e-o-token", content_type="text/plain")
+
+    assert response.status_code == 403
+    assert client.get("/").status_code == 403
 
 
 def test_search_sem_perfil_retorna_erro():
@@ -88,6 +119,48 @@ def test_api_nao_pode_ser_cacheada():
     resp = client.get("/api/meta")
     assert "no-store" in resp.headers["Cache-Control"]
     assert resp.get_json()["csrf_token"]
+
+
+def test_sse_nao_expoe_detalhes_da_excecao(monkeypatch):
+    client = app.test_client()
+    headers = _csrf_headers(client)
+    with client.session_transaction() as flask_session:
+        sid = flask_session["sid"]
+    webapp.store.get(sid).profile = CandidateProfile(name="Pessoa")
+
+    def fail(*_args, **_kwargs):
+        raise RuntimeError("segredo-interno-nao-deve-vazar")
+
+    monkeypatch.setattr(webapp, "_run_search", fail)
+    resp = client.post("/api/search/stream", json={}, headers=headers)
+
+    assert resp.status_code == 200
+    assert "no-store" in resp.headers["Cache-Control"]
+    assert "segredo-interno-nao-deve-vazar" not in resp.get_data(as_text=True)
+    assert "Erro na busca. Tente novamente." in resp.get_data(as_text=True)
+
+
+def test_sid_invalido_e_regenerado():
+    client = app.test_client()
+    client.get("/")
+    with client.session_transaction() as flask_session:
+        flask_session["sid"] = "../../arquivo-sensivel"
+
+    assert client.get("/api/meta").status_code == 200
+    with client.session_transaction() as flask_session:
+        sid = flask_session["sid"]
+    assert len(sid) == 32
+    assert all(char in "0123456789abcdef" for char in sid)
+
+
+def test_payload_com_id_nao_textual_e_rejeitado():
+    client = app.test_client()
+    resp = client.post(
+        "/api/state/favorite",
+        json={"id": ["nao", "valido"], "favorite": True},
+        headers=_csrf_headers(client),
+    )
+    assert resp.status_code == 400
 
 
 def test_perfil_web_e_criptografado_quando_ha_segredo(tmp_path, monkeypatch):
@@ -133,6 +206,43 @@ def test_export_json_vazio():
     assert resp.status_code == 200
     assert resp.mimetype == "application/json"
     assert resp.get_json() == []
+
+
+def test_storage_persiste_versoes_e_exporta_estado(tmp_path):
+    storage = Storage(tmp_path)
+    profile = CandidateProfile(name="Pessoa", skills=["python"])
+    storage.save_resume_version("sid", profile, "curriculo.pdf")
+    storage.save_favorite("sid", "job-1", {"id": "job-1", "title": "Dev"})
+    storage.save_web_profile("sid", profile)
+    exported = storage.export_web_data("sid")
+    assert exported["favorites"]["job-1"]["title"] == "Dev"
+    assert exported["profile"]["name"] == "Pessoa"
+    assert exported["resume_versions"][0]["filename"] == "curriculo.pdf"
+    storage.delete_web_data("sid")
+    assert storage.export_web_data("sid")["favorites"] == {}
+
+
+def test_importacao_manual_de_vaga(monkeypatch, tmp_path):
+    storage = Storage(tmp_path)
+    monkeypatch.setattr(webapp, "_db", lambda: storage)
+    client = app.test_client()
+    headers = _csrf_headers(client)
+    with client.session_transaction() as flask_session:
+        sid = flask_session["sid"]
+    webapp.store.get(sid).profile = CandidateProfile(skills=["python"])
+    response = client.post(
+        "/api/job/import",
+        json={
+            "url": "https://example.com/vaga",
+            "title": "Desenvolvedor Python",
+            "company": "Acme",
+            "description": "Python e Docker",
+        },
+        headers=headers,
+    )
+    assert response.status_code == 200
+    assert response.get_json()["job"]["source"] == "manual"
+    assert response.get_json()["job"]["missing_skills"] == ["docker"]
 
 
 def test_rate_ok_janela_deslizante():

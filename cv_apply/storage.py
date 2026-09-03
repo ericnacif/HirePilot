@@ -14,6 +14,13 @@ from pathlib import Path
 from cv_apply.profile import CandidateProfile, JobMatch, JobPosting
 
 
+def _decode_json(value: str, default):
+    try:
+        return json.loads(value)
+    except (TypeError, json.JSONDecodeError):
+        return default
+
+
 class Storage:
     def __init__(self, data_dir: Path):
         self.data_dir = data_dir
@@ -103,6 +110,14 @@ class Storage:
                     profile_json TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS resume_versions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    sid TEXT NOT NULL,
+                    filename TEXT,
+                    profile_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
                 """
             )
 
@@ -155,7 +170,10 @@ class Storage:
                 payload = Fernet(key).decrypt(payload[7:].encode()).decode()
             except InvalidToken:
                 return None
-        return CandidateProfile.model_validate(json.loads(payload))
+        try:
+            return CandidateProfile.model_validate(_decode_json(payload, {}))
+        except (TypeError, ValueError):
+            return None
 
     def save_jobs(self, jobs: list[JobPosting]) -> None:
         with sqlite3.connect(self.db_path) as conn:
@@ -337,13 +355,13 @@ class Storage:
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             favs = {
-                r["job_id"]: json.loads(r["data"])
+                r["job_id"]: _decode_json(r["data"], {})
                 for r in conn.execute(
                     "SELECT job_id, data FROM web_favorites WHERE sid = ?", (sid,)
                 )
             }
             applied = {
-                r["job_id"]: json.loads(r["data"])
+                r["job_id"]: _decode_json(r["data"], {})
                 for r in conn.execute(
                     "SELECT job_id, data FROM web_applied WHERE sid = ?", (sid,)
                 )
@@ -358,7 +376,7 @@ class Storage:
                 {
                     "id": r["id"],
                     "name": r["name"],
-                    "filters": json.loads(r["filters_json"]),
+                    "filters": _decode_json(r["filters_json"], {}),
                     "enabled": bool(r["enabled"]),
                     "last_run": r["last_run"],
                     "last_new_count": r["last_new_count"],
@@ -403,6 +421,52 @@ class Storage:
                 "DELETE FROM web_applied WHERE sid = ? AND job_id = ?",
                 (sid, job_id),
             )
+
+    def save_resume_version(self, sid: str, profile: CandidateProfile, filename: str = "") -> int:
+        with sqlite3.connect(self.db_path) as conn:
+            cur = conn.execute(
+                "INSERT INTO resume_versions (sid, filename, profile_json, created_at) VALUES (?, ?, ?, ?)",
+                (sid, filename[:200], profile.model_dump_json(), datetime.now().isoformat()),
+            )
+            return int(cur.lastrowid)
+
+    def list_resume_versions(self, sid: str) -> list[dict]:
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT id, filename, created_at, profile_json FROM resume_versions WHERE sid = ? ORDER BY id DESC LIMIT 20",
+                (sid,),
+            ).fetchall()
+        out = []
+        for row in rows:
+            profile = _decode_json(row["profile_json"], {})
+            out.append({
+                "id": row["id"],
+                "filename": row["filename"] or "Currículo",
+                "created_at": row["created_at"],
+                "name": profile.get("name"),
+                "skills": len(profile.get("skills") or []),
+            })
+        return out
+
+    def delete_web_data(self, sid: str) -> None:
+        with sqlite3.connect(self.db_path) as conn:
+            for table in ("web_favorites", "web_applied", "seen_jobs", "search_alerts", "web_profiles", "resume_versions"):
+                conn.execute(f"DELETE FROM {table} WHERE sid = ?", (sid,))
+
+    def export_web_data(self, sid: str) -> dict:
+        state = self.get_web_state(sid)
+        profile = self.load_web_profile(sid)
+        return {
+            "version": 1,
+            "exported_at": datetime.now().isoformat(),
+            "profile": profile.model_dump() if profile else None,
+            "favorites": state["favorites"],
+            "applied": state["applied"],
+            "seen_ids": state["seen_ids"],
+            "alerts": state["alerts"],
+            "resume_versions": self.list_resume_versions(sid),
+        }
 
     def mark_seen_jobs(self, sid: str, job_ids: list[str]) -> None:
         if not job_ids:
@@ -480,7 +544,7 @@ class Storage:
                     {
                         "id": r["id"],
                         "name": r["name"],
-                        "filters": json.loads(r["filters_json"]),
+                        "filters": _decode_json(r["filters_json"], {}),
                         "sid": r["sid"],
                     },
                 )
