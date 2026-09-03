@@ -9,11 +9,13 @@ O estado por sessão é guardado em memória com expiração automática
 from __future__ import annotations
 
 import csv
+import hashlib
 import io
 import json
 import logging
 import os
 import queue
+import re
 import secrets
 import sys
 import threading
@@ -28,7 +30,7 @@ from functools import wraps
 from pathlib import Path
 from typing import Any
 
-from flask import Flask, Response, jsonify, redirect, render_template, request, session
+from flask import Flask, Response, jsonify, render_template, request, session
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from cv_apply.ats import analyze_ats, analyze_resume_format
@@ -37,7 +39,7 @@ from cv_apply.cover_letter import generate_cover_letter
 from cv_apply.profile import CandidateProfile, JobPosting
 from cv_apply.resume_parser import parse_resume
 from cv_apply.salary import extract_salary
-from cv_apply.search_pipeline import apply_payload_to_settings, execute_search
+from cv_apply.search_pipeline import apply_payload_to_settings, execute_search, job_row
 from cv_apply.sources import AVAILABLE_SOURCES
 from cv_apply.storage import Storage
 from cv_apply.tailor import tailor_resume_markdown
@@ -51,6 +53,7 @@ WEB_ALLOWED_HOSTS = [
     host.strip() for host in os.getenv("WEB_ALLOWED_HOSTS", "").split(",") if host.strip()
 ]
 DESKTOP_AUTH_TOKEN = os.getenv("DESKTOP_AUTH_TOKEN", "")
+DESKTOP_BOOT_NONCE = os.getenv("DESKTOP_BOOT_NONCE", "")
 SESSION_TTL_SECONDS = 2 * 60 * 60  # 2h sem uso → expira
 
 
@@ -170,6 +173,10 @@ class SessionStore:
                 entry.last_seen = time.time()
             return entry
 
+    def delete(self, sid: str) -> SessionData | None:
+        with self._lock:
+            return self._data.pop(sid, None)
+
 
 store = SessionStore()
 
@@ -265,17 +272,43 @@ def _cleanup_stale_uploads(upload_dir: Path, retention_seconds: int = UPLOAD_RET
 
 
 def _sid() -> str:
-    if "sid" not in session:
-        session["sid"] = uuid.uuid4().hex
-    return session["sid"]
+    sid = session.get("sid")
+    if not isinstance(sid, str) or not re.fullmatch(r"[0-9a-f]{32}", sid):
+        sid = uuid.uuid4().hex
+        session["sid"] = sid
+    return sid
 
 
 def _csrf_token() -> str:
     token = session.get("csrf_token")
-    if not token:
+    if not isinstance(token, str) or not 32 <= len(token) <= 256:
         token = secrets.token_urlsafe(32)
         session["csrf_token"] = token
     return token
+
+
+def _json_object() -> dict:
+    """Retorna apenas payloads JSON-objeto, evitando 500 com listas/escalares."""
+    data = request.get_json(silent=True)
+    return data if isinstance(data, dict) else {}
+
+
+def _job_id(data: dict) -> str | None:
+    value = data.get("id")
+    if not isinstance(value, str):
+        return None
+    value = value.strip()
+    return value if 1 <= len(value) <= 256 else None
+
+
+def _positive_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
 
 
 def _request_ip() -> str:
@@ -367,7 +400,10 @@ def require_profile(fn: Callable) -> Callable:
 
     @wraps(fn)
     def wrapper(*args: Any, **kwargs: Any):
-        sess = store.get(_sid())
+        sid = _sid()
+        sess = store.get(sid)
+        if sess and not sess.profile:
+            sess.profile = _db().load_web_profile(sid)
         if not sess or not sess.profile:
             return jsonify({"error": "Envie seu currículo primeiro."})
         return fn(sess, *args, **kwargs)
@@ -380,11 +416,15 @@ def require_job(fn: Callable) -> Callable:
 
     @wraps(fn)
     def wrapper(*args: Any, **kwargs: Any):
-        sess = store.get(_sid())
+        sid = _sid()
+        sess = store.get(sid)
+        if sess and not sess.profile:
+            sess.profile = _db().load_web_profile(sid)
         if not sess or not sess.profile:
             return jsonify({"error": "Envie seu currículo primeiro."})
-        data = request.get_json(silent=True) or {}
-        job = sess.jobs.get(data.get("id"))
+        data = _json_object()
+        job_id = _job_id(data)
+        job = sess.jobs.get(job_id) if job_id else None
         if not job:
             return jsonify({"error": "Sessão expirada — refaça a busca."})
         return fn(sess, job, data, *args, **kwargs)
@@ -418,14 +458,13 @@ def _global_rate_limit():
     """Limita a taxa global de chamadas à API por sessão."""
     if request.path == "/healthz":
         return None
+    if DESKTOP_AUTH_TOKEN and (
+        request.path == "/desktop-auth" or request.path.startswith("/desktop-boot/")
+    ):
+        if not _ip_rate_ok(int(os.getenv("IP_RATE_LIMIT_MAX", "120"))):
+            return jsonify({"error": "Muitas requisições deste endereço. Aguarde."}), 429
+        return None
     if DESKTOP_AUTH_TOKEN:
-        supplied = request.args.get("desktop_token", "")
-        if supplied and secrets.compare_digest(supplied, DESKTOP_AUTH_TOKEN):
-            session.clear()
-            session["desktop_authorized"] = True
-            _sid()
-            _csrf_token()
-            return redirect(request.path, code=303)
         if not session.get("desktop_authorized"):
             return jsonify({"error": "Acesso local não autorizado."}), 403
     if not request.path.startswith("/api/"):
@@ -438,6 +477,8 @@ def _global_rate_limit():
             return jsonify({"error": "Origem da requisição não permitida."}), 403
         provided = request.headers.get("X-CSRF-Token", "")
         expected = session.get("csrf_token", "")
+        if not isinstance(provided, str) or not isinstance(expected, str):
+            return jsonify({"error": "Token de segurança inválido. Recarregue a página."}), 403
         if not expected or not secrets.compare_digest(provided, expected):
             return jsonify({"error": "Token de segurança inválido. Recarregue a página."}), 403
         if request.mimetype == "application/json" and (request.content_length or 0) > MAX_JSON_BYTES:
@@ -479,6 +520,69 @@ def _security_headers(response: Response) -> Response:
 def index():
     _sid()
     return render_template("index.html", csrf_token=_csrf_token())
+
+
+@app.route("/sw.js")
+def service_worker():
+    response = app.send_static_file("sw.js")
+    response.headers["Cache-Control"] = "no-cache"
+    response.headers["Service-Worker-Allowed"] = "/"
+    return response
+
+
+def _desktop_boot_html(app_url: str) -> str:
+    """Página intermediária que autentica o desktop sem pôr o segredo na URL."""
+    app_url_json = json.dumps(app_url, ensure_ascii=False)
+    token_json = json.dumps(DESKTOP_AUTH_TOKEN, ensure_ascii=False)
+    return f"""<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer"><title>Vaga em Vista</title>
+<style>body{{margin:0;min-height:100vh;display:grid;place-items:center;background:#101828;color:#F7F8F3;font:16px system-ui,sans-serif}}main{{text-align:center;padding:24px}}p{{color:#AAB4C5}}.dot{{display:inline-block;width:10px;height:10px;margin:0 4px;border-radius:50%;background:#B7F34A;animation:p 1s infinite alternate}}.dot:nth-child(2){{animation-delay:.2s}}.dot:nth-child(3){{animation-delay:.4s}}@keyframes p{{to{{opacity:.25;transform:translateY(-4px)}}}}</style>
+</head><body><main><h1>Vaga em Vista</h1><p id="status">Iniciando <span class="dot"></span><span class="dot"></span><span class="dot"></span></p></main>
+<script>
+(() => {{
+  const appUrl = {app_url_json};
+  const token = {token_json};
+  const status = document.getElementById("status");
+  fetch("/desktop-auth", {{method: "POST", body: token, headers: {{"Content-Type": "text/plain"}}}})
+    .then((response) => {{
+      if (!response.ok) throw new Error("auth");
+      window.location.replace(appUrl);
+    }})
+    .catch(() => {{ status.textContent = "Não foi possível iniciar o aplicativo. Feche e tente novamente."; }});
+}})();
+</script></body></html>"""
+
+
+@app.route("/desktop-boot/<nonce>", methods=["GET"])
+def desktop_boot(nonce: str):
+    if (
+        not DESKTOP_AUTH_TOKEN
+        or not DESKTOP_BOOT_NONCE
+        or not isinstance(nonce, str)
+        or not secrets.compare_digest(nonce, DESKTOP_BOOT_NONCE)
+    ):
+        return jsonify({"error": "Recurso não encontrado."}), 404
+    response = Response(_desktop_boot_html(request.url_root), mimetype="text/html")
+    response.headers["Cache-Control"] = "no-store, private"
+    response.headers["Pragma"] = "no-cache"
+    return response
+
+
+@app.route("/desktop-auth", methods=["POST"])
+def desktop_auth():
+    if not DESKTOP_AUTH_TOKEN:
+        return jsonify({"error": "Autenticação local não configurada."}), 404
+    if request.content_length and request.content_length > 512:
+        return jsonify({"error": "Token inválido."}), 403
+    supplied = request.get_data(cache=True, as_text=True).strip()
+    if not supplied or not secrets.compare_digest(supplied, DESKTOP_AUTH_TOKEN):
+        return jsonify({"error": "Token inválido."}), 403
+    session.clear()
+    session["desktop_authorized"] = True
+    _sid()
+    _csrf_token()
+    return jsonify({"ok": True})
 
 
 @app.route("/healthz")
@@ -526,6 +630,8 @@ def api_upload():
     sess.resume_path = dest
     sess.jobs.clear()
     sess.source_by_job.clear()
+    _db().save_web_profile(sid, profile)
+    _db().save_resume_version(sid, profile, file.filename)
     summary = _profile_summary(profile, dest)
     summary["job_hint"] = profile.job_titles[0] if profile.job_titles else (
         " ".join(profile.skills[:2]) if profile.skills else "desenvolvedor"
@@ -539,7 +645,7 @@ def api_upload():
 def api_search(sess: SessionData):
     if not sess.rate_ok("search", SEARCH_RATE_MAX, RATE_LIMIT_WINDOW):
         return jsonify({"error": "Muitas buscas seguidas. Aguarde alguns segundos."}), 429
-    data = request.get_json(silent=True) or {}
+    data = _json_object()
     sid = _sid()
     try:
         return jsonify(_run_search(sess, data, sid))
@@ -553,7 +659,7 @@ def api_search(sess: SessionData):
 def api_search_stream(sess: SessionData):
     if not sess.rate_ok("search", SEARCH_RATE_MAX, RATE_LIMIT_WINDOW):
         return jsonify({"error": "Muitas buscas seguidas. Aguarde alguns segundos."}), 429
-    data = request.get_json(silent=True) or {}
+    data = _json_object()
     sid = _sid()
 
     def generate():
@@ -578,8 +684,9 @@ def api_search_stream(sess: SessionData):
                     on_source_done=on_source,
                     on_partial=on_partial,
                 )
-            except Exception as exc:
-                holder["error"] = str(exc)
+            except Exception:
+                logger.exception("Erro na busca em streaming")
+                holder["error"] = "Erro na busca. Tente novamente."
             finally:
                 q.put({"event": "_done"})
 
@@ -597,18 +704,25 @@ def api_search_stream(sess: SessionData):
     return Response(
         generate(),
         mimetype="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        headers={
+            "Cache-Control": "no-store, private",
+            "Pragma": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 
 @app.route("/api/job/detail", methods=["POST"])
 @require_profile
 def api_job_detail(sess: SessionData):
-    data = request.get_json(silent=True) or {}
-    job = sess.jobs.get(data.get("id"))
+    data = _json_object()
+    job_id = _job_id(data)
+    job = sess.jobs.get(job_id) if job_id else None
     if not job:
         return jsonify({"error": "Vaga não encontrada — refaça a busca."}), 404
     _, _, sal = extract_salary(job)
+    from cv_apply.matching import match_job
+    match = match_job(sess.profile, job, use_semantic=False)
     return jsonify({
         "id": job.id,
         "title": job.title,
@@ -620,6 +734,10 @@ def api_job_detail(sess: SessionData):
         "source": sess.source_by_job.get(job.id, ""),
         "posted_at": _format_posted(job.posted_at),
         "easy_apply": job.easy_apply,
+        "score": match.score,
+        "breakdown": match.breakdown,
+        "missing_skills": match.missing_skills,
+        "fit_label": match.fit_label,
     })
 
 
@@ -627,7 +745,9 @@ def api_job_detail(sess: SessionData):
 def api_meta():
     from cv_apply import __version__
 
-    full = os.getenv("HIREPILOT_FULL", "").lower() in {"1", "true", "yes"}
+    full = os.getenv("VAGA_EM_VISTA_FULL", os.getenv("HIREPILOT_FULL", "")).lower() in {
+        "1", "true", "yes"
+    }
     return jsonify({
         "version": __version__,
         "variant": "full" if full else "lite",
@@ -674,9 +794,9 @@ def api_state_get():
 
 @app.route("/api/state/favorite", methods=["POST"])
 def api_state_favorite():
-    data = request.get_json(silent=True) or {}
+    data = _json_object()
     sid = _sid()
-    job_id = data.get("id")
+    job_id = _job_id(data)
     if not job_id:
         return jsonify({"error": "id ausente"}), 400
     db = _db()
@@ -689,9 +809,9 @@ def api_state_favorite():
 
 @app.route("/api/state/applied", methods=["POST"])
 def api_state_applied():
-    data = request.get_json(silent=True) or {}
+    data = _json_object()
     sid = _sid()
-    job_id = data.get("id")
+    job_id = _job_id(data)
     if not job_id:
         return jsonify({"error": "id ausente"}), 400
     db = _db()
@@ -703,6 +823,99 @@ def api_state_applied():
     return jsonify({"ok": True})
 
 
+@app.route("/api/applications", methods=["GET"])
+def api_applications():
+    return jsonify({"applications": list(_db().get_web_state(_sid())["applied"].values())})
+
+
+@app.route("/api/applications/status", methods=["POST"])
+def api_application_status():
+    data = _json_object()
+    job_id = _job_id(data)
+    status = data.get("status")
+    allowed = {"saved", "applied", "interview", "offer", "rejected", "withdrawn"}
+    if not job_id or not isinstance(status, str) or status not in allowed:
+        return jsonify({"error": "Vaga ou status inválido."}), 400
+    sid = _sid()
+    state = _db().get_web_state(sid)
+    meta = dict(state["applied"].get(job_id) or {"id": job_id})
+    meta["status"] = status
+    _db().save_applied_meta(sid, job_id, meta)
+    return jsonify({"ok": True, "application": meta})
+
+
+@app.route("/api/resume/versions", methods=["GET"])
+def api_resume_versions():
+    return jsonify({"versions": _db().list_resume_versions(_sid())})
+
+
+@app.route("/api/privacy/export", methods=["GET"])
+def api_privacy_export():
+    payload = json.dumps(_db().export_web_data(_sid()), ensure_ascii=False, indent=2)
+    return Response(
+        payload,
+        mimetype="application/json",
+        headers={"Content-Disposition": "attachment; filename=vaga-em-vista-dados.json"},
+    )
+
+
+@app.route("/api/privacy/delete", methods=["POST"])
+def api_privacy_delete():
+    sid = _sid()
+    sess = store.delete(sid)
+    if sess:
+        _delete_resume_file(sess.resume_path)
+    _db().delete_web_data(sid)
+    session.clear()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/diagnostics", methods=["GET"])
+def api_diagnostics():
+    settings = get_settings()
+    db_path = settings.data_dir / "cv_apply.db"
+    return jsonify({
+        "ok": True,
+        "version": __import__("cv_apply").__version__,
+        "variant": "full" if os.getenv("VAGA_EM_VISTA_FULL", "").lower() in {"1", "true", "yes"} else "lite",
+        "sources": [{"name": name, "configured": name in settings.search_sources} for name in AVAILABLE_SOURCES],
+        "semantic": {"configured": settings.use_semantic_matching},
+        "data_dir": str(settings.data_dir),
+        "database": {"exists": db_path.exists(), "size_bytes": db_path.stat().st_size if db_path.exists() else 0},
+    })
+
+
+@app.route("/api/job/import", methods=["POST"])
+@require_profile
+def api_job_import(sess: SessionData):
+    data = _json_object()
+    url = data.get("url", "")
+    title = data.get("title", "")
+    company = data.get("company", "Empresa não informada")
+    location = data.get("location", "")
+    description = data.get("description", "")
+    from urllib.parse import urlparse
+    if not isinstance(url, str) or urlparse(url).scheme not in {"http", "https"} or not urlparse(url).netloc:
+        return jsonify({"error": "Informe uma URL http(s) válida."}), 400
+    if not isinstance(title, str) or not 2 <= len(title.strip()) <= 200:
+        return jsonify({"error": "Informe o título da vaga."}), 400
+    if not isinstance(company, str) or not isinstance(description, str) or len(company) > 160 or len(description) > 20000:
+        return jsonify({"error": "Dados da vaga muito grandes."}), 400
+    raw_id = f"{url.strip()}|{title.strip()}|{company.strip()}"
+    job = JobPosting(
+        id="manual-" + hashlib.sha256(raw_id.encode()).hexdigest()[:32],
+        title=title.strip(), company=company.strip() or "Empresa não informada",
+        location=str(location)[:200], url=url.strip(), description=str(description).strip(),
+        posted_at=datetime.now().isoformat(),
+    )
+    sess.jobs[job.id] = job
+    sess.source_by_job[job.id] = "manual"
+    _db().save_jobs([job])
+    from cv_apply.matching import match_job
+    match = match_job(sess.profile, job, use_semantic=False)
+    return jsonify({"job": job_row(match, sess.profile, source="manual", applied=False, is_new=True, format_posted=_format_posted)})
+
+
 @app.route("/api/alerts", methods=["GET", "POST", "DELETE"])
 @require_profile
 def api_alerts(sess: SessionData):
@@ -710,20 +923,29 @@ def api_alerts(sess: SessionData):
     db = _db()
     if request.method == "GET":
         return jsonify({"alerts": db.get_web_state(sid)["alerts"]})
-    data = request.get_json(silent=True) or {}
+    data = _json_object()
     if request.method == "DELETE":
-        alert_id = int(data.get("id", 0))
+        alert_id = _positive_int(data.get("id"))
+        if data.get("id") is not None and alert_id is None:
+            return jsonify({"error": "id inválido"}), 400
         if alert_id:
             db.delete_alert(sid, alert_id)
         return jsonify({"ok": True})
-    name = (data.get("name") or "").strip()
+    name_value = data.get("name")
+    name = name_value.strip() if isinstance(name_value, str) else ""
     filters = data.get("filters")
-    if not name or not filters:
+    if not isinstance(name, str) or not 1 <= len(name) <= 120:
+        return jsonify({"error": "Nome e filtros são obrigatórios."}), 400
+    if not isinstance(filters, dict) or not filters:
         return jsonify({"error": "Nome e filtros são obrigatórios."}), 400
     # Só persiste o perfil quando a pessoa ativa um recurso que precisa dele
     # depois da requisição; uploads comuns continuam apenas na memória/sessão.
     db.save_web_profile(sid, sess.profile)
-    aid = db.save_alert(sid, name, filters, data.get("id"))
+    raw_alert_id = data.get("id")
+    alert_id = _positive_int(raw_alert_id)
+    if raw_alert_id is not None and alert_id is None:
+        return jsonify({"error": "id inválido"}), 400
+    aid = db.save_alert(sid, name, filters, alert_id)
     return jsonify({"ok": True, "id": aid})
 
 
@@ -731,8 +953,8 @@ def api_alerts(sess: SessionData):
 @require_profile
 def api_alerts_toggle(sess: SessionData):
     sid = _sid()
-    data = request.get_json(silent=True) or {}
-    alert_id = int(data.get("id", 0))
+    data = _json_object()
+    alert_id = _positive_int(data.get("id"))
     if not alert_id:
         return jsonify({"error": "id ausente"}), 400
     _db().set_alert_enabled(sid, alert_id, bool(data.get("enabled", True)))
@@ -771,7 +993,8 @@ def api_tailor(sess: SessionData, job: JobPosting, data: dict):
 @app.route("/api/cover", methods=["POST"])
 @require_job
 def api_cover(sess: SessionData, job: JobPosting, data: dict):
-    lang = (data.get("lang") or "").lower() or None
+    lang_value = data.get("lang")
+    lang = lang_value.lower() if isinstance(lang_value, str) else None
     letter = generate_cover_letter(sess.profile, job, get_settings(), lang=lang)
     return jsonify({"letter": letter})
 
@@ -833,8 +1056,9 @@ def api_export():
 @app.route("/api/profile", methods=["POST"])
 @require_profile
 def api_profile(sess: SessionData):
-    data = request.get_json(silent=True) or {}
-    seniority = (data.get("seniority") or "").strip().lower()
+    data = _json_object()
+    seniority_value = data.get("seniority")
+    seniority = seniority_value.strip().lower() if isinstance(seniority_value, str) else ""
     sess.profile.seniority = seniority if seniority in VALID_SENIORITY else None
     return jsonify({"ok": True, "seniority": sess.profile.seniority})
 
@@ -842,8 +1066,8 @@ def api_profile(sess: SessionData):
 @app.route("/api/applied", methods=["POST"])
 @require_profile
 def api_applied(sess: SessionData):
-    data = request.get_json(silent=True) or {}
-    job_id = data.get("id")
+    data = _json_object()
+    job_id = _job_id(data)
     if not job_id:
         return jsonify({"error": "id ausente"})
     if data.get("applied"):

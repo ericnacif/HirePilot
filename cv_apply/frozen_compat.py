@@ -16,7 +16,7 @@ def apply_frozen_patches() -> None:
 def _patch_importlib_metadata() -> None:
     import importlib.metadata as md
 
-    if getattr(md, "_hirepilot_patched", False):
+    if getattr(md, "_vaga_em_vista_patched", False):
         return
 
     _orig_version = md.version
@@ -28,7 +28,7 @@ def _patch_importlib_metadata() -> None:
             return "0.0.0"
 
     md.version = _safe_version  # type: ignore[method-assign]
-    md._hirepilot_patched = True  # type: ignore[attr-defined]
+    md._vaga_em_vista_patched = True  # type: ignore[attr-defined]
 
 
 def ensure_single_instance() -> bool:

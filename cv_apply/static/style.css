@@ -468,6 +468,15 @@ dialog .row { padding: 14px 22px; border-top: 1px solid var(--border); display: 
 .why-job { margin: 10px 0 4px; font-size: 12px; color: var(--muted); }
 .why-job summary { cursor: pointer; color: var(--accent); font-weight: 600; }
 .why-job p { margin: 6px 0 0; line-height: 1.5; }
+.match-breakdown { border-top: 1px solid var(--border); padding-top: 8px; }
+.breakdown-grid { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; margin-top: 8px; }
+.breakdown-grid b { color: var(--txt); }
+.missing-skills { color: var(--warn); }
+.tag.missing { color: var(--warn); border-color: rgba(245,158,11,.35); }
+.dashboard-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 18px 0; }
+.status-select { max-width: 130px; padding: 5px 7px; border-radius: 7px; border: 1px solid var(--border-strong); background: var(--bg); color: var(--txt); }
+.btn.danger { color: var(--danger); border-color: rgba(255,107,94,.35); }
+.alert-modal textarea { width: 100%; resize: vertical; }
 .job-preview { max-height: 50vh; overflow: auto; white-space: pre-wrap; font-size: 13px; line-height: 1.55; margin-top: 12px; padding: 12px; background: var(--surface2); border-radius: 10px; }
 .funnel { display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; }
 .funnel-step { text-align: center; padding: 10px 16px; background: var(--surface2); border-radius: 12px; min-width: 80px; }

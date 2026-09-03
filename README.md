@@ -1,6 +1,6 @@
-# HirePilot
+# Vaga em Vista
 
-> **HirePilot** — seu copiloto inteligente para conquistar a vaga ideal.
+> **Vaga em Vista** — sua próxima oportunidade, em vista.
 
 [![CI](https://github.com/ericnacif/HirePilot/actions/workflows/ci.yml/badge.svg)](https://github.com/ericnacif/HirePilot/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
@@ -47,8 +47,8 @@ Use por sua conta e risco. Não há garantia contra bloqueio de conta.
 
 ```bash
 # Clone o repositório
-git clone https://github.com/ericnacif/HirePilot.git
-cd HirePilot
+git clone https://github.com/ericnacif/HirePilot.git vaga-em-vista
+cd vaga-em-vista
 
 # Ambiente virtual (recomendado)
 python -m venv .venv
@@ -57,7 +57,7 @@ python -m venv .venv
 # Linux/macOS
 source .venv/bin/activate
 
-# Opção A: instalar como pacote (cria o comando `hirepilot`; `vagamatch` continua como alias)
+# Opção A: instalar como pacote (cria o comando `vaga-em-vista`)
 pip install -e .
 # Opção B: só as dependências
 pip install -r requirements.txt
@@ -66,7 +66,7 @@ pip install -r requirements.txt
 playwright install chromium
 ```
 
-Com a instalação via `pip install -e .`, use `hirepilot` no lugar de `python -m cv_apply` (ex.: `hirepilot web`). O comando `vagamatch` ainda funciona.
+Com a instalação via `pip install -e .`, use `vaga-em-vista` no lugar de `python -m cv_apply` (ex.: `vaga-em-vista web`). Os comandos `hirepilot` e `vagamatch` continuam funcionando como aliases de compatibilidade.
 
 ### Docker (rodar com um comando)
 
@@ -79,13 +79,13 @@ docker compose up --build
 Acesse `http://localhost:5000`. A imagem é enxuta (sem Playwright/torch): as fontes
 via API (Gupy, Remotive, RemoteOK) e o matching por palavras-chave funcionam normalmente.
 As fontes LinkedIn/InfoJobs (que abrem navegador) e o matching semântico ficam
-desativados nesse modo. Os dados (uploads) ficam no volume `hirepilot-data`.
+desativados nesse modo. Os dados (uploads) ficam no volume Docker `hirepilot-data` para preservar instalações anteriores.
 
 Sem o compose:
 
 ```bash
-docker build -t hirepilot .
-docker run -p 5000:5000 -v hirepilot-data:/app/data hirepilot
+docker build -t vaga-em-vista .
+docker run -p 5000:5000 -v hirepilot-data:/app/data vaga-em-vista
 ```
 
 ### App desktop — executável Windows (.exe)
@@ -100,6 +100,10 @@ build_exe.bat
 ```
 
 O arquivo sai em `dist\Vaga em Vista.exe`.
+
+O script também executa os testes e o lint antes do empacotamento, cria o ZIP
+portátil e gera `dist\SHA256SUMS.txt`. Se o Inno Setup 6 estiver instalado, o
+instalador `dist\Vaga-em-Vista-Setup.exe` é criado automaticamente.
 
 **Usar o executável:**
 
@@ -116,7 +120,7 @@ O arquivo sai em `dist\Vaga em Vista.exe`.
 | LinkedIn / InfoJobs (navegador) | Não |
 | Matching semântico (torch) | Não — usa TF-IDF local |
 
-Dados em `%LOCALAPPDATA%\HirePilot\data\`. Requer **WebView2** (padrão no Windows 10/11).
+Dados em `%LOCALAPPDATA%\Vaga em Vista\data\`. Instalações anteriores são migradas automaticamente. Requer **WebView2** (padrão no Windows 10/11).
 
 ### Distribuir para um amigo (sem código)
 
@@ -133,7 +137,7 @@ Repositório: https://github.com/ericnacif/HirePilot
    - **`Vaga-em-Vista-Setup.exe`** — instalador (melhor opção)
    - ou **`Vaga-em-Vista-portable.zip`** — versão portátil
 
-Arquivos no release: Leve (`Vaga em Vista.exe`), Completa (`Vaga em Vista-Full.exe`), instalador e ZIP.
+Arquivos no release: Leve (`Vaga em Vista.exe`), Completa (`Vaga em Vista-Full.exe`), instalador, ZIP e `SHA256SUMS.txt`.
 Instruções para leigos: [INSTALAR.md](INSTALAR.md). Histórico: [CHANGELOG.md](CHANGELOG.md).
 
 **Testar o modo app sem gerar o .exe:**
@@ -143,7 +147,7 @@ pip install -r requirements-web.txt
 python run_app.py
 ```
 
-Para forçar abertura no navegador (debug): `set HIREPILOT_BROWSER=1` e rode `python run_app.py`.
+Para forçar abertura no navegador (debug): `set VAGA_EM_VISTA_BROWSER=1` e rode `python run_app.py`. `HIREPILOT_BROWSER` continua aceito como variável legada.
 
 ### Desenvolvimento
 
@@ -211,7 +215,7 @@ Coloque seu currículo na raiz do projeto (ex.: `meu_cv.pdf`) ou informe o camin
 python -m cv_apply web
 ```
 
-Abre no navegador a interface **HirePilot** que **qualquer pessoa** pode usar — cada um tem sua sessão isolada, sem precisar de conta:
+Abre no navegador a interface **Vaga em Vista** que **qualquer pessoa** pode usar — cada um tem sua sessão isolada, sem precisar de conta:
 
 1. **Sobe o currículo** (PDF/DOCX) na tela inicial
 2. Recebe na hora o **perfil extraído** e a **nota ATS de formato** (anel de score)
@@ -239,7 +243,7 @@ buscas salvas, exportação (CSV/JSON) e reconhecimento de **sinônimos de skill
 (ex.: `js`→`javascript`, `k8s`→`kubernetes`).
 
 > Se a porta 5000 já estiver ocupada, escolha outra sem encerrar o processo existente:
-> `hirepilot web --port 5001`.
+> `vaga-em-vista web --port 5001`.
 
 Não precisa configurar nada antes — o currículo é enviado pela própria interface.
 

@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#101828">
 <meta name="csrf-token" content="{{ csrf_token }}">
+<link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
 <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
 <title>Vaga em Vista — sua próxima oportunidade, em vista</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -33,7 +34,7 @@
     <span class="badge" id="uploadBadge">✦ EMPREGO MAIS PERTO DE VOCÊ</span>
     <h2 class="lead" id="uploadLead">Encontre vaga <span class="grad">sem complicação</span></h2>
     <p class="lead-sub" id="uploadSub">Mande seu currículo em PDF ou Word. A gente busca vagas e mostra quais combinam mais com você.</p>
-    <div class="drop" id="drop" onclick="document.getElementById('file').click()">
+    <div class="drop" id="drop" role="button" tabindex="0" aria-label="Escolher currículo" onclick="document.getElementById('file').click()">
       <div class="icon">📄</div>
       <h2>Envie seu currículo</h2>
       <p>Arraste aqui ou clique — PDF ou DOCX.</p>
@@ -263,6 +264,7 @@
 
             <div class="search-actions">
               <button class="go" id="go" onclick="search()">Buscar vagas agora</button>
+              <button class="btn ghost" type="button" onclick="openImportJob()">+ Importar vaga</button>
             </div>
 
             <div class="label-row pro-only" style="margin-top:18px">
@@ -281,7 +283,7 @@
         </div>
 
         <div id="resultsTab" class="tab-pane">
-          <div id="results">
+          <div id="results" aria-live="polite" aria-atomic="false">
             <div class="empty">
               <div class="big">🔎</div>
               <span id="resultsEmptyText">Escolha a área na aba <b>Buscar</b> e clique em <b>Buscar vagas agora</b>.</span>
@@ -303,6 +305,30 @@
   <div class="row" id="modalRow">
     <span id="modalLeft"></span>
     <button class="btn primary" onclick="document.getElementById('modal').close()">Fechar</button>
+  </div>
+</dialog>
+
+<dialog id="importModal" class="alert-modal">
+  <div class="dh">
+    <span>Importar vaga</span>
+    <button class="x" type="button" onclick="document.getElementById('importModal').close()">&times;</button>
+  </div>
+  <div class="body">
+    <p class="muted" style="font-size:13px;margin-bottom:10px">Cole uma vaga de qualquer site para analisar junto com seu currículo.</p>
+    <label for="importUrl">URL da vaga</label>
+    <input type="url" id="importUrl" placeholder="https://..." required>
+    <label for="importTitle">Título</label>
+    <input type="text" id="importTitle" placeholder="Ex.: Desenvolvedor Python" maxlength="200" required>
+    <label for="importCompany">Empresa</label>
+    <input type="text" id="importCompany" placeholder="Opcional" maxlength="160">
+    <label for="importLocation">Localização</label>
+    <input type="text" id="importLocation" placeholder="Opcional" maxlength="200">
+    <label for="importDescription">Descrição</label>
+    <textarea id="importDescription" rows="6" placeholder="Cole os requisitos e detalhes da vaga"></textarea>
+  </div>
+  <div class="row">
+    <button class="btn ghost" type="button" onclick="document.getElementById('importModal').close()">Cancelar</button>
+    <button class="btn primary" type="button" onclick="confirmImportJob()">Analisar vaga</button>
   </div>
 </dialog>
 

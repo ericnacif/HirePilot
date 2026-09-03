@@ -39,7 +39,7 @@ Guia para quem **não precisa** instalar Python nem usar terminal.
 
 Tudo fica no seu PC, em:
 
-`%LOCALAPPDATA%\HirePilot\data\`
+`%LOCALAPPDATA%\Vaga em Vista\data\`
 
 Currículo enviado, favoritos e histórico **não vão para a nuvem**.
 

@@ -59,7 +59,9 @@ def _splash_html() -> str:
 
 
 def _is_full_variant() -> bool:
-    return os.getenv("HIREPILOT_FULL", "").lower() in {"1", "true", "yes"}
+    return os.getenv("VAGA_EM_VISTA_FULL", os.getenv("HIREPILOT_FULL", "")).lower() in {
+        "1", "true", "yes"
+    }
 
 
 def _ensure_desktop_defaults() -> None:
@@ -175,7 +177,7 @@ def _start_flask(host: str, port: int) -> tuple[BaseWSGIServer, threading.Thread
     from cv_apply.webapp import app
 
     server = make_server(host, port, app, threaded=True)
-    thread = threading.Thread(target=server.serve_forever, name="hirepilot-http", daemon=True)
+    thread = threading.Thread(target=server.serve_forever, name="vaga-em-vista-http", daemon=True)
     thread.start()
     return server, thread
 
@@ -286,6 +288,12 @@ def run_launch() -> None:
     _ensure_desktop_defaults()
     logging.basicConfig(level=logging.WARNING)
 
+    host = "127.0.0.1"
+    port = _pick_port()
+    base_url = f"http://{host}:{port}"
+    boot_nonce = secrets.token_urlsafe(24)
+    os.environ["DESKTOP_BOOT_NONCE"] = boot_nonce
+
     from cv_apply.config import get_settings
     from cv_apply.webapp import _cleanup_stale_uploads
 
@@ -294,11 +302,7 @@ def run_launch() -> None:
     _cleanup_stale_uploads(settings.data_dir / "uploads")
     _bootstrap_playwright_async(settings.data_dir)
 
-    host = "127.0.0.1"
-    port = _pick_port()
-    token = os.environ["DESKTOP_AUTH_TOKEN"]
-    base_url = f"http://{host}:{port}"
-    url = f"{base_url}/?desktop_token={token}"
+    url = f"{base_url}/desktop-boot/{boot_nonce}"
 
     try:
         server, _thread = _start_flask(host, port)
@@ -321,7 +325,10 @@ def run_launch() -> None:
 
     _start_alert_scheduler(settings)
 
-    use_browser = os.getenv("HIREPILOT_BROWSER", os.getenv("VAGAMATCH_BROWSER", "")).lower() in {
+    use_browser = os.getenv(
+        "VAGA_EM_VISTA_BROWSER",
+        os.getenv("HIREPILOT_BROWSER", os.getenv("VAGAMATCH_BROWSER", "")),
+    ).lower() in {
         "1",
         "true",
         "yes",
